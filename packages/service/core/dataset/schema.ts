@@ -1,7 +1,11 @@
 import { connectionMongo, type Model } from '../../common/mongo';
 const { Schema, model, models } = connectionMongo;
 import { DatasetSchemaType } from '@fastgpt/global/core/dataset/type.d';
-import { DatasetTypeMap } from '@fastgpt/global/core/dataset/constant';
+import {
+  DatasetStatusEnum,
+  DatasetStatusMap,
+  DatasetTypeMap
+} from '@fastgpt/global/core/dataset/constant';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
@@ -31,9 +35,16 @@ const DatasetSchema = new Schema({
     ref: TeamMemberCollectionName,
     required: true
   },
-  updateTime: {
-    type: Date,
-    default: () => new Date()
+  type: {
+    type: String,
+    enum: Object.keys(DatasetTypeMap),
+    required: true,
+    default: 'dataset'
+  },
+  status: {
+    type: String,
+    enum: Object.keys(DatasetStatusMap),
+    default: DatasetStatusEnum.active
   },
   avatar: {
     type: String,
@@ -43,29 +54,40 @@ const DatasetSchema = new Schema({
     type: String,
     required: true
   },
+  updateTime: {
+    type: Date,
+    default: () => new Date()
+  },
   vectorModel: {
     type: String,
     required: true,
     default: 'text-embedding-ada-002'
   },
-  type: {
+  agentModel: {
     type: String,
-    enum: Object.keys(DatasetTypeMap),
     required: true,
-    default: 'dataset'
+    default: 'gpt-3.5-turbo-16k'
   },
-  tags: {
-    type: [String],
-    default: [],
-    set(val: string | string[]) {
-      if (Array.isArray(val)) return val;
-      return val.split(' ').filter((item) => item);
-    }
+  intro: {
+    type: String,
+    default: ''
   },
   permission: {
     type: String,
     enum: Object.keys(PermissionTypeMap),
     default: PermissionTypeEnum.private
+  },
+  websiteConfig: {
+    type: {
+      url: {
+        type: String,
+        required: true
+      },
+      selector: {
+        type: String,
+        default: 'body'
+      }
+    }
   }
 });
 
@@ -77,3 +99,4 @@ try {
 
 export const MongoDataset: Model<DatasetSchemaType> =
   models[DatasetCollectionName] || model(DatasetCollectionName, DatasetSchema);
+MongoDataset.syncIndexes();

@@ -7,13 +7,14 @@ import {
   Input,
   Textarea,
   ModalFooter,
-  ModalBody
+  ModalBody,
+  Image
 } from '@chakra-ui/react';
 import { useForm } from 'react-hook-form';
 import { AppSchema } from '@fastgpt/global/core/app/type.d';
 import { useToast } from '@/web/common/hooks/useToast';
 import { useSelectFile } from '@/web/common/file/hooks/useSelectFile';
-import { compressImgAndUpload } from '@/web/common/file/controller';
+import { compressImgFileAndUpload } from '@/web/common/file/controller';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { useRequest } from '@/web/common/hooks/useRequest';
 import Avatar from '@/components/Avatar';
@@ -100,10 +101,10 @@ const InfoModal = ({
       const file = e[0];
       if (!file) return;
       try {
-        const src = await compressImgAndUpload({
+        const src = await compressImgFileAndUpload({
           file,
-          maxW: 100,
-          maxH: 100
+          maxW: 300,
+          maxH: 300
         });
         setValue('avatar', src);
         setRefresh((state) => !state);
@@ -118,7 +119,12 @@ const InfoModal = ({
   );
 
   return (
-    <MyModal isOpen={true} onClose={onClose} title={'应用信息设置'}>
+    <MyModal
+      isOpen={true}
+      onClose={onClose}
+      iconSrc="/imgs/module/ai.svg"
+      title={t('core.app.setting')}
+    >
       <ModalBody>
         <Box>头像 & 名称</Box>
         <Flex mt={2} alignItems={'center'}>

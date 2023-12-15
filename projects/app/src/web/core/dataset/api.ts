@@ -1,14 +1,17 @@
 import { GET, POST, PUT, DELETE } from '@/web/common/api/request';
 import type { ParentTreePathItemType } from '@fastgpt/global/common/parentFolder/type.d';
-import type { DatasetItemType } from '@fastgpt/global/core/dataset/type.d';
+import type { DatasetItemType, DatasetListItemType } from '@fastgpt/global/core/dataset/type.d';
 import type {
-  DatasetUpdateParams,
-  SearchTestProps,
   GetDatasetCollectionsProps,
   GetDatasetDataListProps,
-  CreateDatasetCollectionParams,
   UpdateDatasetCollectionParams
 } from '@/global/core/api/datasetReq.d';
+import type {
+  CreateDatasetCollectionParams,
+  DatasetUpdateBody,
+  PostWebsiteSyncParams
+} from '@fastgpt/global/core/dataset/api.d';
+import type { SearchTestProps, SearchTestResponse } from '@/global/core/dataset/api.d';
 import type {
   PushDatasetDataProps,
   UpdateDatasetDataProps,
@@ -16,25 +19,20 @@ import type {
   InsertOneDatasetDataProps
 } from '@/global/core/dataset/api.d';
 import type { PushDataResponse } from '@/global/core/api/datasetRes.d';
-import type {
-  DatasetCollectionItemType,
-  SearchDataResponseItemType
-} from '@fastgpt/global/core/dataset/type';
+import type { DatasetCollectionItemType } from '@fastgpt/global/core/dataset/type';
 import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constant';
-import { getToken } from '@/web/support/user/auth';
-import download from 'downloadjs';
 import type { DatasetDataItemType } from '@fastgpt/global/core/dataset/type';
 import type { DatasetCollectionsListItemType } from '@/global/core/dataset/type.d';
 import { PagingData } from '@/types';
 
 /* ======================== dataset ======================= */
 export const getDatasets = (data: { parentId?: string; type?: `${DatasetTypeEnum}` }) =>
-  GET<DatasetItemType[]>(`/core/dataset/list`, data);
+  GET<DatasetListItemType[]>(`/core/dataset/list`, data);
 
 /**
  * get type=dataset list
  */
-export const getAllDataset = () => GET<DatasetItemType[]>(`/core/dataset/allDataset`);
+export const getAllDataset = () => GET<DatasetListItemType[]>(`/core/dataset/allDataset`);
 
 export const getDatasetPaths = (parentId?: string) =>
   GET<ParentTreePathItemType[]>('/core/dataset/paths', { parentId });
@@ -44,13 +42,21 @@ export const getDatasetById = (id: string) => GET<DatasetItemType>(`/core/datase
 export const postCreateDataset = (data: CreateDatasetParams) =>
   POST<string>(`/core/dataset/create`, data);
 
-export const putDatasetById = (data: DatasetUpdateParams) => PUT(`/core/dataset/update`, data);
+export const putDatasetById = (data: DatasetUpdateBody) => PUT<void>(`/core/dataset/update`, data);
 
 export const delDatasetById = (id: string) => DELETE(`/core/dataset/delete?id=${id}`);
 
+export const postWebsiteSync = (data: PostWebsiteSyncParams) =>
+  POST(`/plusApi/core/dataset/websiteSync`, data, {
+    timeout: 600000
+  }).catch();
+
+export const getCheckExportLimit = (datasetId: string) =>
+  GET(`/core/dataset/checkExportLimit`, { datasetId });
+
 /* =========== search test ============ */
 export const postSearchText = (data: SearchTestProps) =>
-  POST<SearchDataResponseItemType[]>(`/core/dataset/searchTest`, data);
+  POST<SearchTestResponse>(`/core/dataset/searchTest`, data);
 
 /* ============================= collections ==================================== */
 export const getDatasetCollections = (data: GetDatasetCollectionsProps) =>
@@ -64,7 +70,9 @@ export const postDatasetCollection = (data: CreateDatasetCollectionParams) =>
 export const putDatasetCollectionById = (data: UpdateDatasetCollectionParams) =>
   POST(`/core/dataset/collection/update`, data);
 export const delDatasetCollectionById = (params: { collectionId: string }) =>
-  DELETE(`/core/dataset/collection/delById`, params);
+  DELETE(`/core/dataset/collection/delete`, params);
+export const postLinkCollectionSync = (collectionId: string) =>
+  POST(`/core/dataset/collection/sync/link`, { collectionId });
 
 /* =============================== data ==================================== */
 /* get dataset list */

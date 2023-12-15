@@ -68,20 +68,21 @@ const InviteModal = ({
   return (
     <MyModal
       isOpen
+      iconSrc="/imgs/modal/team.svg"
       title={
-        <>
+        <Box>
           <Box>{t('user.team.Invite Member')}</Box>
           <Box color={'myGray.500'} fontSize={'xs'} fontWeight={'normal'}>
             {t('user.team.Invite Member Tips')}
           </Box>
-        </>
+        </Box>
       }
       maxW={['90vw', '400px']}
       overflow={'unset'}
     >
       <ModalCloseButton onClick={onClose} />
       <ModalBody>
-        <Box mb={2}>{t('common.Username')}</Box>
+        <Box mb={2}>{t('user.Account')}</Box>
         <TagTextarea defaultValues={inviteUsernames} onUpdate={setInviteUsernames} />
         <Box mt={4}>
           <MySelect list={inviteTypes} value={selectedInviteType} onchange={setSelectInviteType} />

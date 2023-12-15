@@ -1,9 +1,20 @@
 import React, { useState } from 'react';
-import { Image, Skeleton } from '@chakra-ui/react';
+import {
+  Box,
+  Image,
+  Modal,
+  ModalCloseButton,
+  ModalContent,
+  ModalOverlay,
+  Skeleton,
+  useDisclosure
+} from '@chakra-ui/react';
+import MyModal from '@/components/MyModal';
 
 const MdImage = ({ src }: { src?: string }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [succeed, setSucceed] = useState(false);
+  const { isOpen, onOpen, onClose } = useDisclosure();
   return (
     <Skeleton
       minH="100px"
@@ -30,9 +41,25 @@ const MdImage = ({ src }: { src?: string }) => {
         onError={() => setIsLoading(false)}
         onClick={() => {
           if (!succeed) return;
-          window.open(src, '_blank');
+          onOpen();
         }}
       />
+      <Modal isOpen={isOpen} onClose={onClose} isCentered>
+        <ModalOverlay />
+        <ModalContent boxShadow={'none'} maxW={'auto'} w="auto" bg={'transparent'}>
+          <Image
+            borderRadius={'md'}
+            src={src}
+            alt={''}
+            w={'100%'}
+            maxH={'80vh'}
+            fallbackSrc={'/imgs/errImg.png'}
+            fallbackStrategy={'onError'}
+            objectFit={'contain'}
+          />
+        </ModalContent>
+        <ModalCloseButton bg={'myWhite.500'} zIndex={999999} />
+      </Modal>
     </Skeleton>
   );
 };

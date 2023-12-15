@@ -13,9 +13,13 @@ import { useRequest } from '@/web/common/hooks/useRequest';
 import { postDatasetCollection } from '@/web/core/dataset/api';
 import { formatPrice } from '@fastgpt/global/support/wallet/bill/tools';
 import { splitText2Chunks } from '@fastgpt/global/common/string/textSplitter';
+import { hashStr } from '@fastgpt/global/common/string/tools';
 import { useToast } from '@/web/common/hooks/useToast';
 import { getErrText } from '@fastgpt/global/common/error/utils';
-import { TrainingModeEnum } from '@fastgpt/global/core/dataset/constant';
+import {
+  DatasetCollectionTrainingModeEnum,
+  TrainingModeEnum
+} from '@fastgpt/global/core/dataset/constant';
 import { Box, Flex, Image, useTheme } from '@chakra-ui/react';
 import { CloseIcon } from '@chakra-ui/icons';
 import DeleteIcon, { hoverDeleteStyles } from '@/components/Icon/delete';
@@ -44,6 +48,7 @@ type useImportStoreType = {
   price: number;
   uploading: boolean;
   chunkLen: number;
+  chunkOverlapRatio: number;
   setChunkLen: Dispatch<number>;
   showRePreview: boolean;
   setReShowRePreview: Dispatch<SetStateAction<boolean>>;
@@ -66,6 +71,7 @@ const StateContext = createContext<useImportStoreType>({
   },
   price: 0,
   chunkLen: 0,
+  chunkOverlapRatio: 0,
   setChunkLen: function (value: number): void {
     throw new Error('Function not implemented.');
   },
@@ -90,7 +96,11 @@ const Provider = ({
   parentId,
   unitPrice,
   mode,
+  collectionTrainingType,
+  vectorModel,
+  agentModel,
   defaultChunkLen = 500,
+  chunkOverlapRatio = 0.2,
   importType,
   onUploadSuccess,
   children
@@ -99,7 +109,11 @@ const Provider = ({
   parentId: string;
   unitPrice: number;
   mode: `${TrainingModeEnum}`;
+  collectionTrainingType: `${DatasetCollectionTrainingModeEnum}`;
+  vectorModel: string;
+  agentModel: string;
   defaultChunkLen: number;
+  chunkOverlapRatio: number;
   importType: `${ImportTypeEnum}`;
   onUploadSuccess: () => void;
   children: React.ReactNode;
@@ -132,7 +146,9 @@ const Provider = ({
         const chunks = file.chunks;
         // create training bill
         const billId = await postCreateTrainingBill({
-          name: t('dataset.collections.Create Training Data', { filename: file.filename })
+          name: t('dataset.collections.Create Training Data', { filename: file.filename }),
+          vectorModel,
+          agentModel
         });
         // create a file collection and training bill
         const collectionId = await postDatasetCollection({
@@ -140,7 +156,12 @@ const Provider = ({
           parentId,
           name: file.filename,
           type: file.type,
-          metadata: file.metadata
+          fileId: file.fileId,
+          rawLink: file.rawLink,
+          chunkSize: chunkLen,
+          trainingType: collectionTrainingType,
+          qaPrompt: mode === TrainingModeEnum.qa ? prompt : '',
+          hashRawText: hashStr(file.rawText)
         });
 
         // upload data
@@ -160,21 +181,24 @@ const Provider = ({
     },
     onSuccess(num) {
       toast({
-        title: `共成功导入 ${num} 组数据，请耐心等待训练.`,
+        title: t('core.dataset.import.Import Success Tip', { num }),
         status: 'success'
       });
       onUploadSuccess();
     },
-    errorToast: '导入文件失败'
+    errorToast: t('core.dataset.import.Import Failed')
   });
 
   const onReSplitChunks = useCallback(async () => {
     try {
+      setPreviewFile(undefined);
+
       setFiles((state) =>
         state.map((file) => {
           const splitRes = splitText2Chunks({
-            text: file.text,
-            maxLen: chunkLen
+            text: file.rawText,
+            chunkLen,
+            overlapRatio: chunkOverlapRatio
           });
 
           return {
@@ -191,10 +215,10 @@ const Provider = ({
     } catch (error) {
       toast({
         status: 'warning',
-        title: getErrText(error, '文本分段异常')
+        title: getErrText(error, t('core.dataset.import.Set Chunk Error'))
       });
     }
-  }, [chunkLen, toast]);
+  }, [chunkLen, chunkOverlapRatio, t, toast]);
 
   const reset = useCallback(() => {
     setFiles([]);
@@ -222,6 +246,7 @@ const Provider = ({
     onclickUpload,
     uploading,
     chunkLen,
+    chunkOverlapRatio,
     setChunkLen,
     showRePreview,
     setReShowRePreview
@@ -233,6 +258,7 @@ export default React.memo(Provider);
 
 export const PreviewFileOrChunk = () => {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { setFiles, previewFile, setPreviewFile, setReShowRePreview, totalChunks, files } =
     useImportStore();
 
@@ -264,7 +290,7 @@ export const PreviewFileOrChunk = () => {
             px={[4, 8]}
             my={4}
             contentEditable
-            dangerouslySetInnerHTML={{ __html: previewFile.text }}
+            dangerouslySetInnerHTML={{ __html: previewFile.rawText }}
             fontSize={'sm'}
             whiteSpace={'pre-wrap'}
             wordBreak={'break-all'}
@@ -290,11 +316,11 @@ export const PreviewFileOrChunk = () => {
         <Box pt={[3, 6]}>
           <Flex px={[4, 8]} alignItems={'center'}>
             <Box fontSize={['lg', 'xl']} fontWeight={'bold'}>
-              分段预览({totalChunks}组)
+              {t('core.dataset.import.Total Chunk Preview', { totalChunks })}
             </Box>
             {totalChunks > 50 && (
               <Box ml={2} fontSize={'sm'} color={'myhGray.500'}>
-                仅展示部分
+                {t('core.dataset.import.Only Show First 50 Chunk')}
               </Box>
             )}
           </Flex>
@@ -397,15 +423,18 @@ export const SelectorContainer = ({
   showUrlFetch,
   showCreateFile,
   fileTemplate,
+  tip,
   children
 }: {
   fileExtension: string;
   showUrlFetch?: boolean;
   showCreateFile?: boolean;
   fileTemplate?: FileSelectProps['fileTemplate'];
+  tip?: string;
   children: React.ReactNode;
 }) => {
-  const { files, setPreviewFile, isUnselectedFile, setFiles, chunkLen } = useImportStore();
+  const { files, setPreviewFile, isUnselectedFile, setFiles, chunkLen, chunkOverlapRatio } =
+    useImportStore();
   return (
     <Box
       h={'100%'}
@@ -424,9 +453,11 @@ export const SelectorContainer = ({
           setFiles((state) => files.concat(state));
         }}
         chunkLen={chunkLen}
+        overlapRatio={chunkOverlapRatio}
         showUrlFetch={showUrlFetch}
         showCreateFile={showCreateFile}
         fileTemplate={fileTemplate}
+        tip={tip}
         py={isUnselectedFile ? '100px' : 5}
       />
       {!isUnselectedFile && (
@@ -465,6 +496,7 @@ export const SelectorContainer = ({
                 display={['block', 'none']}
                 onClick={(e) => {
                   e.stopPropagation();
+                  setPreviewFile(undefined);
                   setFiles((state) => state.filter((file) => file.id !== item.id));
                 }}
               />

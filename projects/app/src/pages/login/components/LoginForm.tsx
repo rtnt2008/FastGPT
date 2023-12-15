@@ -11,7 +11,7 @@ import { feConfigs } from '@/web/common/system/staticData';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyIcon from '@/components/Icon';
 import { customAlphabet } from 'nanoid';
-import { useUserStore } from '@/web/support/user/useUserStore';
+import { getDocPath } from '@/web/common/system/doc';
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz1234567890', 8);
 
 interface Props {
@@ -86,6 +86,8 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
       : [])
   ];
 
+  const isCommunityVersion = feConfigs?.show_register === false && feConfigs?.show_git;
+
   return (
     <>
       <Box fontWeight={'bold'} fontSize={'2xl'} textAlign={'center'}>
@@ -94,7 +96,7 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
       <form onSubmit={handleSubmit(onclickLogin)}>
         <FormControl mt={8} isInvalid={!!errors.username}>
           <Input
-            placeholder="邮箱/手机号/用户名"
+            placeholder={isCommunityVersion ? '使用root用户登录' : '邮箱/手机号/用户名'}
             size={['md', 'lg']}
             {...register('username', {
               required: '邮箱/手机号/用户名不能为空'
@@ -108,7 +110,7 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
           <Input
             type={'password'}
             size={['md', 'lg']}
-            placeholder="密码"
+            placeholder={isCommunityVersion ? 'root密码为你设置的环境变量' : '密码'}
             {...register('password', {
               required: '密码不能为空',
               maxLength: {
@@ -141,11 +143,11 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
                 注册账号
               </Box>
             </Flex>
-            {feConfigs?.show_doc && (
+            {feConfigs?.docUrl && (
               <Box textAlign={'center'} mt={2} fontSize={'sm'}>
                 使用即代表你同意我们的{' '}
                 <Link
-                  href={`${feConfigs.docUrl}/docs/intro/#%e5%85%8d%e8%b4%a3%e5%a3%b0%e6%98%8e`}
+                  href={getDocPath('/docs/agreement/disclaimer/')}
                   target={'_blank'}
                   color={'myBlue.600'}
                 >

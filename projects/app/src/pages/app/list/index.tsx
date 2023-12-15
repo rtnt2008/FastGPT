@@ -66,12 +66,12 @@ const MyApps = () => {
   );
 
   /* 加载模型 */
-  useQuery(['loadApps'], () => loadMyApps(true), {
+  const { isFetching } = useQuery(['loadApps'], () => loadMyApps(true), {
     refetchOnMount: true
   });
 
   return (
-    <PageContainer>
+    <PageContainer isLoading={isFetching}>
       <Flex pt={3} px={5} alignItems={'center'}>
         <Flex flex={1} alignItems={'center'}>
           <Image src={'/imgs/module/ai.svg'} alt={''} mr={2} h={'24px'} />
@@ -189,6 +189,14 @@ const MyApps = () => {
           </MyTooltip>
         ))}
       </Grid>
+      {myApps.length === 0 && (
+        <Flex mt={'35vh'} flexDirection={'column'} alignItems={'center'}>
+          <MyIcon name="empty" w={'48px'} h={'48px'} color={'transparent'} />
+          <Box mt={2} color={'myGray.500'}>
+            还没有应用，快去创建一个吧！
+          </Box>
+        </Flex>
+      )}
       <ConfirmModal />
       {isOpenCreateModal && (
         <CreateModal onClose={onCloseCreateModal} onSuccess={() => loadMyApps(true)} />

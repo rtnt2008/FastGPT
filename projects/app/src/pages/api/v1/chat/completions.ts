@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { authApp } from '@fastgpt/service/support/permission/auth/app';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { sseErrRes, jsonRes } from '@fastgpt/service/common/response';
-import { addLog } from '@fastgpt/service/common/mongo/controller';
+import { addLog } from '@fastgpt/service/common/system/log';
 import { withNextCors } from '@fastgpt/service/common/middle/cors';
 import { ChatRoleEnum, ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
 import { sseResponseEventEnum } from '@fastgpt/service/common/response/constant';
@@ -10,21 +10,22 @@ import { dispatchModules } from '@/service/moduleDispatch';
 import type { ChatCompletionCreateParams } from '@fastgpt/global/core/ai/type.d';
 import type { ChatMessageItemType } from '@fastgpt/global/core/ai/type.d';
 import { gptMessage2ChatType, textAdaptGptResponse } from '@/utils/adapt';
-import { getChatHistory } from './getHistory';
+import { getChatItems } from '@fastgpt/service/core/chat/controller';
 import { saveChat } from '@/service/utils/chat/saveChat';
 import { responseWrite } from '@fastgpt/service/common/response';
 import { pushChatBill } from '@/service/support/wallet/bill/push';
-import { BillSourceEnum } from '@fastgpt/global/support/wallet/bill/constants';
-import { authOutLinkChat } from '@/service/support/permission/auth/outLink';
+import { authOutLinkChatStart } from '@/service/support/permission/auth/outLink';
 import { pushResult2Remote, updateOutLinkUsage } from '@fastgpt/service/support/outLink/tools';
 import requestIp from 'request-ip';
+import { getBillSourceByAuthType } from '@fastgpt/global/support/wallet/bill/tools';
 
 import { selectShareResponse } from '@/utils/service/core/chat';
 import { updateApiKeyUsage } from '@fastgpt/service/support/openapi/tools';
 import { connectToDatabase } from '@/service/mongo';
-import { getUserAndAuthBalance } from '@/service/support/permission/auth/user';
+import { getUserAndAuthBalance } from '@fastgpt/service/support/user/controller';
 import { AuthUserTypeEnum } from '@fastgpt/global/support/permission/constant';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
+import { autChatCrud } from '@/service/support/permission/auth/chat';
 
 type FastGptWebChatProps = {
   chatId?: string; // undefined: nonuse history, '': new chat, 'xxxxx': use history
@@ -32,7 +33,7 @@ type FastGptWebChatProps = {
 };
 type FastGptShareChatProps = {
   shareId?: string;
-  authToken?: string;
+  outLinkUid?: string;
 };
 export type Props = ChatCompletionCreateParams &
   FastGptWebChatProps &
@@ -56,11 +57,11 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
     res.end();
   });
 
-  let {
+  const {
     chatId,
     appId,
     shareId,
-    authToken,
+    outLinkUid,
     stream = false,
     detail = false,
     messages = [],
@@ -86,28 +87,36 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
     if (chatMessages[chatMessages.length - 1].obj !== ChatRoleEnum.Human) {
       chatMessages.pop();
     }
+
     // user question
     const question = chatMessages.pop();
     if (!question) {
       throw new Error('Question is empty');
     }
 
-    /*  auth app permission */
-    const { user, app, responseDetail, authType, apikey, canWrite } = await (async () => {
-      if (shareId) {
-        const { user, app, authType, responseDetail } = await authOutLinkChat({
+    /* auth app permission */
+    const { user, app, responseDetail, authType, apikey, canWrite, uid } = await (async () => {
+      if (shareId && outLinkUid) {
+        const { user, appId, authType, responseDetail, uid } = await authOutLinkChatStart({
           shareId,
           ip: requestIp.getClientIp(req),
-          authToken,
+          outLinkUid,
           question: question.value
         });
+        const app = await MongoApp.findById(appId);
+
+        if (!app) {
+          return Promise.reject('app is empty');
+        }
+
         return {
           user,
           app,
           responseDetail,
           apikey: '',
           authType,
-          canWrite: false
+          canWrite: false,
+          uid
         };
       }
 
@@ -141,15 +150,14 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
           responseDetail: detail,
           apikey,
           authType,
-          canWrite: false
+          canWrite: true
         };
       }
 
+      // token auth
       if (!appId) {
         return Promise.reject('appId is empty');
       }
-
-      // token
       const { app, canWrite } = await authApp({
         req,
         authToken: true,
@@ -167,33 +175,34 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
       };
     })();
 
-    // auth app, get history
-    const { history } = await getChatHistory({ chatId, tmbId: user.team.tmbId });
+    // auth chat permission
+    await autChatCrud({
+      req,
+      authToken: true,
+      authApiKey: true,
+      appId: app._id,
+      chatId,
+      shareId,
+      outLinkUid,
+      per: 'w'
+    });
 
-    const isAppOwner = !shareId && String(user.team.tmbId) === String(app.tmbId);
-
-    /* format prompts */
-    const prompts = history.concat(gptMessage2ChatType(messages));
-
-    // set sse response headers
-    if (stream) {
-      res.setHeader('Content-Type', 'text/event-stream;charset=utf-8');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('X-Accel-Buffering', 'no');
-      res.setHeader('Cache-Control', 'no-cache, no-transform');
-    }
+    // get and concat history
+    const { history } = await getChatItems({ chatId, limit: 30, field: `dataId obj value` });
+    const concatHistories = history.concat(chatMessages);
 
     /* start flow controller */
     const { responseData, answerText } = await dispatchModules({
       res,
+      appId: String(app._id),
       chatId,
       modules: app.modules,
       user,
       teamId: user.team.teamId,
       tmbId: user.team.tmbId,
       variables,
-      params: {
-        history: prompts,
+      histories: concatHistories,
+      startParams: {
         userChatInput: question.value
       },
       stream,
@@ -208,8 +217,9 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
         teamId: user.team.teamId,
         tmbId: user.team.tmbId,
         variables,
-        updateUseTime: isAppOwner, // owner update use time
+        updateUseTime: !shareId && String(user.team.tmbId) === String(app.tmbId), // owner update use time
         shareId,
+        outLinkUid: uid,
         source: (() => {
           if (shareId) {
             return ChatSourceEnum.share;
@@ -282,16 +292,12 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
       appId: app._id,
       teamId: user.team.teamId,
       tmbId: user.team.tmbId,
-      source: (() => {
-        if (authType === 'apikey') return BillSourceEnum.api;
-        if (shareId) return BillSourceEnum.shareLink;
-        return BillSourceEnum.fastgpt;
-      })(),
+      source: getBillSourceByAuthType({ shareId, authType }),
       response: responseData
     });
 
     if (shareId) {
-      pushResult2Remote({ authToken, shareId, responseData });
+      pushResult2Remote({ outLinkUid, shareId, responseData });
       updateOutLinkUsage({
         shareId,
         total

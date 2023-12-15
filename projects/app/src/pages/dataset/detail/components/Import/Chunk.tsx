@@ -16,10 +16,12 @@ import { QuestionOutlineIcon } from '@chakra-ui/icons';
 import { useDatasetStore } from '@/web/core/dataset/store/dataset';
 
 import { useImportStore, SelectorContainer, PreviewFileOrChunk } from './Provider';
+import { useTranslation } from 'next-i18next';
 
-const fileExtension = '.txt, .doc, .docx, .pdf, .md';
+const fileExtension = '.txt, .docx, .pdf, .md';
 
 const ChunkImport = () => {
+  const { t } = useTranslation();
   const { datasetDetail } = useDatasetStore();
   const vectorModel = datasetDetail.vectorModel;
   const unitPrice = vectorModel?.price || 0.2;
@@ -39,7 +41,7 @@ const ChunkImport = () => {
   } = useImportStore();
 
   const { openConfirm, ConfirmModal } = useConfirm({
-    content: `该任务无法终止，需要一定时间生成索引，请确认导入。如果余额不足，未完成的任务会被暂停，充值后可继续进行。`
+    content: t('core.dataset.import.Import Tip')
   });
 
   return (
@@ -48,13 +50,8 @@ const ChunkImport = () => {
         {/* chunk size */}
         <Flex py={4} alignItems={'center'}>
           <Box>
-            段落长度
-            <MyTooltip
-              label={
-                '按结束标点符号进行分段。前后段落会有 20% 的内容重叠。\n中文文档建议不要超过1000，英文不要超过1500'
-              }
-              forceShow
-            >
+            {t('core.dataset.import.Ideal chunk length')}
+            <MyTooltip label={t('core.dataset.import.Ideal chunk length Tips')} forceShow>
               <QuestionOutlineIcon ml={1} />
             </MyTooltip>
           </Box>
@@ -66,7 +63,11 @@ const ChunkImport = () => {
               }
             }}
           >
-            <MyTooltip label={`范围: 100~${datasetDetail.vectorModel.maxToken}`}>
+            <MyTooltip
+              label={t('core.dataset.import.Chunk Range', {
+                max: datasetDetail.vectorModel.maxToken
+              })}
+            >
               <NumberInput
                 ml={4}
                 defaultValue={chunkLen}
@@ -90,20 +91,22 @@ const ChunkImport = () => {
         {/* price */}
         <Flex py={4} alignItems={'center'}>
           <Box>
-            预估价格
+            {t('core.dataset.import.Estimated Price')}
             <MyTooltip
-              label={`索引生成计费为: ${formatPrice(unitPrice, 1000)}/1k tokens`}
+              label={t('core.dataset.import.Estimated Price Tips', {
+                price: formatPrice(unitPrice, 1000)
+              })}
               forceShow
             >
               <QuestionOutlineIcon ml={1} />
             </MyTooltip>
           </Box>
-          <Box ml={4}>{price}元</Box>
+          <Box ml={4}>{t('common.price.Amount', { amount: price, unit: '元' })}</Box>
         </Flex>
         <Flex mt={3}>
           {showRePreview && (
             <Button variant={'base'} mr={4} onClick={onReSplitChunks}>
-              重新生成预览
+              {t('core.dataset.import.Re Preview')}
             </Button>
           )}
           <Button isDisabled={uploading} onClick={openConfirm(onclickUpload)}>

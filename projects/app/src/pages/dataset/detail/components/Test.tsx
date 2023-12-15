@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Textarea, Button, Flex, useTheme, Grid, Progress } from '@chakra-ui/react';
+import {
+  Box,
+  Textarea,
+  Button,
+  Flex,
+  useTheme,
+  Grid,
+  Progress,
+  Switch,
+  useDisclosure
+} from '@chakra-ui/react';
 import { useDatasetStore } from '@/web/core/dataset/store/dataset';
 import { useSearchTestStore, SearchTestStoreItemType } from '@/web/core/dataset/store/searchTest';
 import { getDatasetDataItemById, postSearchText } from '@/web/core/dataset/api';
@@ -13,9 +23,13 @@ import { useToast } from '@/web/common/hooks/useToast';
 import { customAlphabet } from 'nanoid';
 import MyTooltip from '@/components/MyTooltip';
 import { QuestionOutlineIcon } from '@chakra-ui/icons';
-import { SearchDataResponseItemType } from '@fastgpt/global/core/dataset/type';
 import { useTranslation } from 'next-i18next';
+import { SearchTestResponse } from '@/global/core/dataset/api';
+import { DatasetSearchModeEnum, DatasetSearchModeMap } from '@fastgpt/global/core/dataset/constant';
+import dynamic from 'next/dynamic';
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz1234567890', 12);
+
+const DatasetParamsModal = dynamic(() => import('@/components/core/module/DatasetParamsModal'));
 
 const Test = ({ datasetId }: { datasetId: string }) => {
   const { t } = useTranslation();
@@ -28,27 +42,38 @@ const Test = ({ datasetId }: { datasetId: string }) => {
   const [inputText, setInputText] = useState('');
   const [datasetTestItem, setDatasetTestItem] = useState<SearchTestStoreItemType>();
   const [editInputData, setEditInputData] = useState<InputDataType & { collectionId: string }>();
+  const [searchMode, setSearchMode] = useState<`${DatasetSearchModeEnum}`>(
+    DatasetSearchModeEnum.embedding
+  );
+  const searchModeData = DatasetSearchModeMap[searchMode];
 
-  const kbTestHistory = useMemo(
+  const {
+    isOpen: isOpenSelectMode,
+    onOpen: onOpenSelectMode,
+    onClose: onCloseSelectMode
+  } = useDisclosure();
+
+  const testHistories = useMemo(
     () => datasetTestList.filter((item) => item.datasetId === datasetId),
     [datasetId, datasetTestList]
   );
 
   const { mutate, isLoading } = useRequest({
-    mutationFn: () => postSearchText({ datasetId, text: inputText.trim() }),
-    onSuccess(res: SearchDataResponseItemType[]) {
-      if (!res || res.length === 0) {
+    mutationFn: () => postSearchText({ datasetId, text: inputText.trim(), searchMode, limit: 30 }),
+    onSuccess(res: SearchTestResponse) {
+      if (!res || res.list.length === 0) {
         return toast({
           status: 'warning',
           title: t('dataset.test.noResult')
         });
       }
-      const testItem = {
+      const testItem: SearchTestStoreItemType = {
         id: nanoid(),
         datasetId,
         text: inputText.trim(),
         time: new Date(),
-        results: res
+        results: res.list,
+        duration: res.duration
       };
       pushDatasetTestItem(testItem);
       setDatasetTestItem(testItem);
@@ -67,6 +92,7 @@ const Test = ({ datasetId }: { datasetId: string }) => {
 
   return (
     <Box h={'100%'} display={['block', 'flex']}>
+      {/* input  */}
       <Box
         h={['auto', '100%']}
         display={['block', 'flex']}
@@ -77,40 +103,50 @@ const Test = ({ datasetId }: { datasetId: string }) => {
         borderRight={['none', theme.borders.base]}
       >
         <Box border={'2px solid'} borderColor={'myBlue.600'} p={3} mx={4} borderRadius={'md'}>
-          <Box fontSize={'sm'} fontWeight={'bold'}>
-            <MyIcon mr={2} name={'text'} w={'18px'} h={'18px'} color={'myBlue.700'} />
-            测试文本
-          </Box>
+          <Flex alignItems={'center'}>
+            <Box fontSize={'sm'} fontWeight={'bold'} flex={1}>
+              <MyIcon mr={2} name={'text'} w={'18px'} h={'18px'} color={'myBlue.700'} />
+              {t('core.dataset.test.Test Text')}
+            </Box>
+            <Button
+              variant={'base'}
+              leftIcon={<MyIcon name={searchModeData.icon as any} w={'14px'} />}
+              size={'sm'}
+              onClick={onOpenSelectMode}
+            >
+              {t(searchModeData.title)}
+            </Button>
+          </Flex>
           <Textarea
             rows={6}
             resize={'none'}
             variant={'unstyled'}
             maxLength={datasetDetail.vectorModel.maxToken}
-            placeholder="输入需要测试的文本"
+            placeholder={t('core.dataset.test.Test Text Placeholder')}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
           />
           <Flex alignItems={'center'} justifyContent={'flex-end'}>
-            <Box mr={3} color={'myGray.500'}>
+            <Box mx={3} color={'myGray.500'}>
               {inputText.length}
             </Box>
             <Button isDisabled={inputText === ''} isLoading={isLoading} onClick={mutate}>
-              测试
+              {t('core.dataset.test.Test')}
             </Button>
           </Flex>
         </Box>
         <Box mt={5} flex={'1 0 0'} px={4} overflow={'overlay'} display={['none', 'block']}>
           <Flex alignItems={'center'} color={'myGray.600'}>
             <MyIcon mr={2} name={'history'} w={'16px'} h={'16px'} />
-            <Box fontSize={'2xl'}>测试历史</Box>
+            <Box fontSize={'2xl'}>{t('core.dataset.test.test history')}</Box>
           </Flex>
           <Box mt={2}>
             <Flex py={2} fontWeight={'bold'} borderBottom={theme.borders.sm}>
-              <Box flex={1}>测试文本</Box>
-              <Box w={'80px'}>时间</Box>
+              <Box flex={1}>{t('core.dataset.test.Test Text')}</Box>
+              <Box w={'80px'}>{t('common.Time')}</Box>
               <Box w={'14px'}></Box>
             </Flex>
-            {kbTestHistory.map((item) => (
+            {testHistories.map((item) => (
               <Flex
                 key={item.id}
                 p={1}
@@ -129,7 +165,7 @@ const Test = ({ datasetId }: { datasetId: string }) => {
                   {item.text}
                 </Box>
                 <Box w={'80px'}>{formatTimeToChatTime(item.time)}</Box>
-                <MyTooltip label={'删除该测试记录'}>
+                <MyTooltip label={t('core.dataset.test.delete test history')}>
                   <Box w={'14px'} h={'14px'}>
                     <MyIcon
                       className="delete"
@@ -150,7 +186,8 @@ const Test = ({ datasetId }: { datasetId: string }) => {
           </Box>
         </Box>
       </Box>
-      <Box p={4} h={['auto', '100%']} overflow={'overlay'} flex={1}>
+      {/* result show */}
+      <Box p={4} h={['auto', '100%']} overflow={'overlay'} flex={'1 0 0'}>
         {!datasetTestItem?.results || datasetTestItem.results.length === 0 ? (
           <Flex
             mt={[10, 0]}
@@ -161,28 +198,24 @@ const Test = ({ datasetId }: { datasetId: string }) => {
           >
             <MyIcon name={'empty'} color={'transparent'} w={'54px'} />
             <Box mt={3} color={'myGray.600'}>
-              测试结果将在这里展示
+              {t('core.dataset.test.test result placeholder')}
             </Box>
           </Flex>
         ) : (
           <>
             <Flex alignItems={'center'}>
               <Box fontSize={'3xl'} color={'myGray.600'}>
-                测试结果
+                {t('core.dataset.test.Test Result')}
               </Box>
-              <MyTooltip
-                label={
-                  '根据知识库内容与测试文本的相似度进行排序，你可以根据测试结果调整对应的文本。\n注意：测试记录中的数据可能已经被修改过，点击某条测试数据后将展示最新的数据。'
-                }
-                forceShow
-              >
+              <MyTooltip label={t('core.dataset.test.test result tip')} forceShow>
                 <QuestionOutlineIcon
-                  ml={2}
+                  mx={2}
                   color={'myGray.600'}
                   cursor={'pointer'}
                   fontSize={'lg'}
                 />
               </MyTooltip>
+              <Box>({datasetTestItem.duration})</Box>
             </Flex>
             <Grid
               mt={1}
@@ -203,14 +236,14 @@ const Test = ({ datasetId }: { datasetId: string }) => {
                   border={theme.borders.base}
                   _notLast={{ mb: 2 }}
                   cursor={'pointer'}
-                  title={'编辑'}
+                  title={t('common.Edit')}
                   onClick={async () => {
                     try {
                       setLoading(true);
                       const data = await getDatasetDataItemById(item.id);
 
                       if (!data) {
-                        throw new Error('该数据已被删除');
+                        throw new Error(t('core.dataset.data.data is deleted'));
                       }
 
                       setEditInputData({
@@ -242,7 +275,7 @@ const Test = ({ datasetId }: { datasetId: string }) => {
                     <MyIcon name={'kbTest'} w={'14px'} />
                     <Progress
                       mx={2}
-                      flex={1}
+                      flex={'1 0 0'}
                       value={item.score * 100}
                       size="sm"
                       borderRadius={'20px'}
@@ -250,7 +283,7 @@ const Test = ({ datasetId }: { datasetId: string }) => {
                     />
                     <Box>{item.score.toFixed(4)}</Box>
                   </Flex>
-                  <Box px={2} fontSize={'xs'} color={'myGray.600'}>
+                  <Box px={2} fontSize={'xs'} color={'myGray.600'} wordBreak={'break-word'}>
                     <Box>{item.q}</Box>
                     <Box>{item.a}</Box>
                   </Box>
@@ -296,6 +329,15 @@ const Test = ({ datasetId }: { datasetId: string }) => {
               setDatasetTestItem(newTestItem);
             }
             setEditInputData(undefined);
+          }}
+        />
+      )}
+      {isOpenSelectMode && (
+        <DatasetParamsModal
+          searchMode={searchMode}
+          onClose={onCloseSelectMode}
+          onSuccess={(e) => {
+            setSearchMode(e.searchMode);
           }}
         />
       )}

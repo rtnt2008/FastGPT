@@ -1,10 +1,10 @@
 ---
-title: '快速开始'
+title: '快速开始本地开发'
 description: '对 FastGPT 进行开发调试'
 icon: 'developer_guide'
 draft: false
 toc: true
-weight: 510
+weight: 705
 ---
 
 本文档介绍了如何设置开发环境以构建和测试 [FastGPT](https://fastgpt.run)。
@@ -46,7 +46,7 @@ git clone git@github.com:<github_username>/FastGPT.git
 
 ### 3. 安装数据库
 
-第一次开发，需要先部署数据库，建议本地开发可以随便找一台 2C2G 的轻量小数据库实践。数据库部署教程：[Docker 快速部署](/docs/installation/docker/)。部署完了，可以本地访问其数据库。
+第一次开发，需要先部署数据库，建议本地开发可以随便找一台 2C2G 的轻量小数据库实践。数据库部署教程：[Docker 快速部署](/docs/development/docker/)。部署完了，可以本地访问其数据库。
 
 ### 4. 初始配置
 
@@ -54,11 +54,11 @@ git clone git@github.com:<github_username>/FastGPT.git
 
 **环境变量**
 
-复制.env.template 文件，在同级目录下生成一个.env.local 文件，修改.env.local 里内容才是有效的变量。变量说明见 .env.template
+复制`.env.template`文件，在同级目录下生成一个`.env.local` 文件，修改`.env.local` 里内容才是有效的变量。变量说明见 .env.template
 
 **config 配置文件**
 
-复制 data/config.json 文件，生成一个 data/config.local.json 配置文件，具体配置参数说明，可参考 [config 配置说明](/docs/development/configuration)
+复制 `data/config.json` 文件，生成一个 `data/config.local.json` 配置文件，具体配置参数说明，可参考 [config 配置说明](/docs/development/configuration)
 
 **注意：json 配置文件不能包含注释，介绍中为了方便看才加入的注释**
 

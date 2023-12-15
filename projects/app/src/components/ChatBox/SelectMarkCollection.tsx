@@ -35,7 +35,7 @@ const SelectMarkCollection = ({
   const theme = useTheme();
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>();
   const [selectedDatasetCollectionIds, setSelectedDatasetCollectionIds] = useState<string[]>([]);
-  const { paths, parentId, setParentId, datasets, isLoading } = useDatasetSelect();
+  const { paths, parentId, setParentId, datasets, isFetching } = useDatasetSelect();
 
   return (
     <>
@@ -45,7 +45,6 @@ const SelectMarkCollection = ({
           isOpen
           paths={paths}
           onClose={onClose}
-          parentId={parentId}
           setParentId={setParentId}
           tips={t('chat.Select Mark Kb Desc')}
         >
@@ -108,7 +107,7 @@ const SelectMarkCollection = ({
           </ModalBody>
           <ModalFooter>
             <Button
-              isLoading={isLoading}
+              isLoading={isFetching}
               isDisabled={!selectedDatasetId}
               onClick={() => {
                 setAdminMarkData({ ...adminMarkData, datasetId: selectedDatasetId });

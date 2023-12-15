@@ -13,18 +13,19 @@ import {
 } from '@chakra-ui/react';
 import { useSelectFile } from '@/web/common/file/hooks/useSelectFile';
 import { useForm } from 'react-hook-form';
-import { compressImgAndUpload } from '@/web/common/file/controller';
+import { compressImgFileAndUpload } from '@/web/common/file/controller';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { useToast } from '@/web/common/hooks/useToast';
 import { postCreateApp } from '@/web/core/app/api';
 import { useRouter } from 'next/router';
-import { appTemplates } from '@/constants/flow/ModuleTemplate';
+import { appTemplates } from '@/web/core/app/templates';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRequest } from '@/web/common/hooks/useRequest';
 import { feConfigs } from '@/web/common/system/staticData';
 import Avatar from '@/components/Avatar';
 import MyTooltip from '@/components/MyTooltip';
 import MyModal from '@/components/MyModal';
+import { useTranslation } from 'next-i18next';
 
 type FormType = {
   avatar: string;
@@ -33,6 +34,7 @@ type FormType = {
 };
 
 const CreateModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => {
+  const { t } = useTranslation();
   const [refresh, setRefresh] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
@@ -56,10 +58,10 @@ const CreateModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       const file = e[0];
       if (!file) return;
       try {
-        const src = await compressImgAndUpload({
+        const src = await compressImgFileAndUpload({
           file,
-          maxW: 100,
-          maxH: 100
+          maxW: 300,
+          maxH: 300
         });
         setValue('avatar', src);
         setRefresh((state) => !state);
@@ -96,8 +98,13 @@ const CreateModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   });
 
   return (
-    <MyModal isOpen onClose={onClose} isCentered={!isPc}>
-      <ModalHeader fontSize={'2xl'}>创建属于你的 AI 应用</ModalHeader>
+    <MyModal
+      iconSrc="/imgs/module/ai.svg"
+      title={t('core.app.create app')}
+      isOpen
+      onClose={onClose}
+      isCentered={!isPc}
+    >
       <ModalBody>
         <Box color={'myGray.800'} fontWeight={'bold'}>
           取个响亮的名字

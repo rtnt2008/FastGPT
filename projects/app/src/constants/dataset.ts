@@ -1,3 +1,4 @@
+import { defaultQAModels, defaultVectorModels } from '@fastgpt/global/core/ai/model';
 import type {
   DatasetCollectionItemType,
   DatasetItemType
@@ -13,22 +14,17 @@ export const defaultDatasetDetail: DatasetItemType = {
   type: 'dataset',
   avatar: '/icon/logo.svg',
   name: '',
-  tags: [],
+  intro: '',
+  status: 'active',
   permission: 'private',
   isOwner: false,
   canWrite: false,
-  vectorModel: {
-    model: 'text-embedding-ada-002',
-    name: 'Embedding-2',
-    price: 0.2,
-    defaultToken: 500,
-    maxToken: 3000
-  }
+  vectorModel: defaultVectorModels[0],
+  agentModel: defaultQAModels[0]
 };
 
 export const defaultCollectionDetail: DatasetCollectionItemType = {
   _id: '',
-  userId: '',
   teamId: '',
   tmbId: '',
   datasetId: {
@@ -41,16 +37,20 @@ export const defaultCollectionDetail: DatasetCollectionItemType = {
     type: 'dataset',
     avatar: '/icon/logo.svg',
     name: '',
-    tags: [],
+    intro: '',
+    status: 'active',
     permission: 'private',
-    vectorModel: 'text-embedding-ada-002'
+    vectorModel: defaultVectorModels[0].model,
+    agentModel: defaultQAModels[0].model
   },
   parentId: '',
   name: '',
   type: 'file',
   updateTime: new Date(),
-  metadata: {},
   canWrite: false,
   sourceName: '',
-  sourceId: ''
+  sourceId: '',
+  createTime: new Date(),
+  trainingType: 'chunk',
+  chunkSize: 0
 };

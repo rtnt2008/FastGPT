@@ -66,6 +66,14 @@ const Button = defineStyleConfig({
         bg: '#3370ff !important'
       }
     },
+    gray: {
+      bg: '#F5F5F8',
+      color: 'myBlue.700',
+      border: '1px solid #EFF0F1',
+      _hover: {
+        bg: '#3370FF1A'
+      }
+    },
     base: {
       color: 'myGray.900',
       border: '1px solid',
@@ -75,12 +83,29 @@ const Button = defineStyleConfig({
       _hover: {
         color: 'myBlue.600',
         bg: 'myWhite.400',
-        boxShadow: '0 0 5px rgba(0,0,0,0.2)'
+        boxShadow: '0 0 5px rgba(0,0,0,0.1)'
       },
       _active: {
         color: 'myBlue.700'
       },
       _disabled: { bg: 'myGray.100 !important', color: 'myGray.700 !important' }
+    },
+    boxBtn: {
+      px: 3,
+      py: '2px',
+      borderRadius: 'md',
+      _hover: {
+        bg: 'myGray.200'
+      }
+    },
+    blue: {
+      borderRadius: 'md',
+      bg: '#3370FF',
+      color: 'white',
+      fontSize: 'sm',
+      _hover: {
+        bg: '#145BFF'
+      }
     }
   },
   defaultProps: {

@@ -7,7 +7,8 @@ import {
   useTheme,
   Divider,
   Select,
-  Input
+  Input,
+  Link
 } from '@chakra-ui/react';
 import { useForm } from 'react-hook-form';
 import { UserUpdateParams } from '@/types/user';
@@ -17,7 +18,7 @@ import type { UserType } from '@fastgpt/global/support/user/type.d';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useSelectFile } from '@/web/common/file/hooks/useSelectFile';
-import { compressImgAndUpload } from '@/web/common/file/controller';
+import { compressImgFileAndUpload } from '@/web/common/file/controller';
 import { feConfigs, systemVersion } from '@/web/common/system/staticData';
 import { useTranslation } from 'next-i18next';
 import { timezoneList } from '@fastgpt/global/common/time/timezone';
@@ -30,6 +31,7 @@ import { useRouter } from 'next/router';
 import MySelect from '@/components/Select';
 import { formatPrice } from '@fastgpt/global/support/wallet/bill/tools';
 import { putUpdateMemberName } from '@/web/support/user/team/api';
+import { getDocPath } from '@/web/common/system/doc';
 
 const TeamMenu = dynamic(() => import('@/components/support/user/team/TeamMenu'));
 const PayModal = dynamic(() => import('./PayModal'), {
@@ -94,10 +96,10 @@ const UserInfo = () => {
       const file = e[0];
       if (!file || !userInfo) return;
       try {
-        const src = await compressImgAndUpload({
+        const src = await compressImgFileAndUpload({
           file,
-          maxW: 100,
-          maxH: 100
+          maxW: 300,
+          maxH: 300
         });
 
         onclickSave({
@@ -247,33 +249,53 @@ const UserInfo = () => {
             )}
           </Flex>
         </Box>
-        {feConfigs?.show_doc && (
-          <>
-            <Flex
-              mt={4}
-              w={['85%', '300px']}
-              py={3}
-              px={6}
-              border={theme.borders.sm}
-              borderWidth={'1.5px'}
-              borderRadius={'md'}
-              alignItems={'center'}
-              cursor={'pointer'}
-              userSelect={'none'}
-              onClick={() => {
-                window.open(`${feConfigs.docUrl}/docs/intro`);
-              }}
-            >
-              <MyIcon name={'courseLight'} w={'18px'} />
-              <Box ml={2} flex={1}>
-                {t('system.Help Document')}
-              </Box>
-              <Box w={'8px'} h={'8px'} borderRadius={'50%'} bg={'#67c13b'} />
-              <Box fontSize={'md'} ml={2}>
-                V{systemVersion}
-              </Box>
-            </Flex>
-          </>
+        {feConfigs?.docUrl && (
+          <Link
+            href={getDocPath('/docs/intro')}
+            target="_blank"
+            display={'flex'}
+            mt={4}
+            w={['85%', '300px']}
+            py={3}
+            px={6}
+            border={theme.borders.sm}
+            borderWidth={'1.5px'}
+            borderRadius={'md'}
+            alignItems={'center'}
+            userSelect={'none'}
+            textDecoration={'none !important'}
+          >
+            <MyIcon name={'common/courseLight'} w={'18px'} />
+            <Box ml={2} flex={1}>
+              {t('system.Help Document')}
+            </Box>
+            <Box w={'8px'} h={'8px'} borderRadius={'50%'} bg={'#67c13b'} />
+            <Box fontSize={'md'} ml={2}>
+              V{systemVersion}
+            </Box>
+          </Link>
+        )}
+        {feConfigs?.chatbotUrl && (
+          <Link
+            href={feConfigs.chatbotUrl}
+            target="_blank"
+            display={'flex'}
+            mt={4}
+            w={['85%', '300px']}
+            py={3}
+            px={6}
+            border={theme.borders.sm}
+            borderWidth={'1.5px'}
+            borderRadius={'md'}
+            alignItems={'center'}
+            userSelect={'none'}
+            textDecoration={'none !important'}
+          >
+            <MyIcon name={'core/app/aiLight'} w={'18px'} />
+            <Box ml={2} flex={1}>
+              {t('common.system.Help Chatbot')}
+            </Box>
+          </Link>
         )}
         {feConfigs?.show_openai_account && (
           <>
@@ -282,7 +304,7 @@ const UserInfo = () => {
             <MyTooltip label={'点击配置账号'}>
               <Flex
                 w={['85%', '300px']}
-                py={3}
+                py={4}
                 px={6}
                 border={theme.borders.sm}
                 borderWidth={'1.5px'}

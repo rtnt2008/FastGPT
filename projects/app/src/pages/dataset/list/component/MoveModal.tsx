@@ -41,7 +41,7 @@ const MoveModal = ({
     () => [
       {
         parentId: '',
-        parentName: t('dataset.My Dataset')
+        parentName: t('core.dataset.My Dataset')
       },
       ...(data?.[1] || [])
     ],
@@ -59,9 +59,13 @@ const MoveModal = ({
   });
 
   return (
-    <MyModal isOpen={true} maxW={['90vw', '800px']} w={'800px'} onClose={onClose}>
-      <Flex flexDirection={'column'} h={['90vh', 'auto']}>
-        <ModalHeader>
+    <MyModal
+      isOpen={true}
+      maxW={['90vw', '800px']}
+      w={'800px'}
+      iconSrc="/imgs/modal/move.svg"
+      title={
+        <>
           {!!parentId ? (
             <Flex flex={1} userSelect={'none'} fontSize={['sm', 'lg']} fontWeight={'normal'}>
               {paths.map((item, i) => (
@@ -85,16 +89,19 @@ const MoveModal = ({
                     {item.parentName}
                   </Box>
                   {i !== paths.length - 1 && (
-                    <MyIcon name={'rightArrowLight'} color={'myGray.500'} w={['18px', '24px']} />
+                    <MyIcon name={'common/rightArrowLight'} color={'myGray.500'} w={'14px'} />
                   )}
                 </Flex>
               ))}
             </Flex>
           ) : (
-            <Box>我的知识库</Box>
+            <Box>{t('core.dataset.My Dataset')}</Box>
           )}
-        </ModalHeader>
-
+        </>
+      }
+      onClose={onClose}
+    >
+      <Flex flexDirection={'column'} h={['90vh', 'auto']}>
         <ModalBody
           flex={['1 0 0', '0 0 auto']}
           maxH={'80vh'}

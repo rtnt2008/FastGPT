@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ModalBody, Box, useTheme, Flex, Progress, Link } from '@chakra-ui/react';
 import { getDatasetDataItemById } from '@/web/core/dataset/api';
 import { useLoading } from '@/web/common/hooks/useLoading';
@@ -11,7 +11,6 @@ import InputDataModal, {
 } from '@/pages/dataset/detail/components/InputDataModal';
 import MyModal from '../MyModal';
 import { useTranslation } from 'next-i18next';
-import { useRouter } from 'next/router';
 import type { SearchDataResponseItemType } from '@fastgpt/global/core/dataset/type';
 import MyTooltip from '../MyTooltip';
 import NextLink from 'next/link';
@@ -19,20 +18,19 @@ import { useSystemStore } from '@/web/common/system/useSystemStore';
 
 const QuoteModal = ({
   rawSearch = [],
-  onClose
+  onClose,
+  isShare
 }: {
   rawSearch: SearchDataResponseItemType[];
   onClose: () => void;
+  isShare: boolean;
 }) => {
   const { t } = useTranslation();
   const { isPc } = useSystemStore();
   const theme = useTheme();
-  const router = useRouter();
   const { toast } = useToast();
   const { setIsLoading, Loading } = useLoading();
   const [editInputData, setEditInputData] = useState<InputDataType & { collectionId: string }>();
-
-  const isShare = useMemo(() => router.pathname === '/chat/share', [router.pathname]);
 
   /**
    * click edit, get new DataItem
@@ -68,16 +66,17 @@ const QuoteModal = ({
         h={['90vh', '80vh']}
         isCentered
         minW={['90vw', '600px']}
+        iconSrc="/imgs/modal/quote.svg"
         title={
-          <>
-            知识库引用({rawSearch.length}条)
-            <Box fontSize={'10px'} color={'myGray.500'} fontWeight={'normal'}>
-              注意: 修改知识库内容成功后，此处不会显示变更情况。点击编辑后，会显示知识库最新的内容。
+          <Box>
+            {t('core.chat.Quote Amount', { amount: rawSearch.length })}
+            <Box fontSize={'sm'} color={'myGray.500'} fontWeight={'normal'}>
+              {t('core.chat.quote.Quote Tip')}
             </Box>
-          </>
+          </Box>
         }
       >
-        <ModalBody pt={0} whiteSpace={'pre-wrap'} textAlign={'justify'} wordBreak={'break-all'}>
+        <ModalBody whiteSpace={'pre-wrap'} textAlign={'justify'} wordBreak={'break-all'}>
           {rawSearch.map((item, i) => (
             <Box
               key={i}
@@ -110,7 +109,7 @@ const QuoteModal = ({
                     href={`/dataset/detail?datasetId=${item.datasetId}&currentTab=dataCard&collectionId=${item.collectionId}`}
                   >
                     {t('core.dataset.Go Dataset')}
-                    <MyIcon name={'rightArrowLight'} w={'10px'} />
+                    <MyIcon name={'common/rightArrowLight'} w={'10px'} />
                   </Link>
                 )}
               </Flex>
@@ -121,7 +120,7 @@ const QuoteModal = ({
                 <Flex alignItems={'center'} fontSize={'sm'} mt={3} gap={4} color={'myGray.500'}>
                   {isPc && (
                     <MyTooltip label={t('core.dataset.data.id')}>
-                      <Flex border={theme.borders.base} px={3} borderRadius={'md'}>
+                      <Flex border={theme.borders.base} py={'1px'} px={3} borderRadius={'3px'}>
                         # {item.id}
                       </Flex>
                     </MyTooltip>

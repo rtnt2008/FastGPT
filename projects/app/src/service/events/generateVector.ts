@@ -2,13 +2,23 @@ import { insertData2Dataset } from '@/service/core/dataset/data/controller';
 import { MongoDatasetTraining } from '@fastgpt/service/core/dataset/training/schema';
 import { TrainingModeEnum } from '@fastgpt/global/core/dataset/constant';
 import { sendOneInform } from '../support/user/inform/api';
-import { addLog } from '@fastgpt/service/common/mongo/controller';
+import { addLog } from '@fastgpt/service/common/system/log';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { authTeamBalance } from '@/service/support/permission/auth/bill';
 import { pushGenerateVectorBill } from '@/service/support/wallet/bill/push';
+import { UserErrEnum } from '@fastgpt/global/common/error/code/user';
+import { lockTrainingDataByTeamId } from '@fastgpt/service/core/dataset/training/controller';
 
-const reduceQueue = () => {
+const reduceQueue = (retry = false) => {
   global.vectorQueueLen = global.vectorQueueLen > 0 ? global.vectorQueueLen - 1 : 0;
+
+  if (global.vectorQueueLen === 0 && retry) {
+    setTimeout(() => {
+      generateVector();
+    }, 60000);
+  }
+
+  return global.vectorQueueLen === 0;
 };
 
 /* 索引生成队列。每导入一次，就是一个单独的线程 */
@@ -24,16 +34,16 @@ export async function generateVector(): Promise<any> {
     error = false
   } = await (async () => {
     try {
-      const data = (
-        await MongoDatasetTraining.findOneAndUpdate(
-          {
-            mode: TrainingModeEnum.chunk,
-            lockTime: { $lte: new Date(Date.now() - 1 * 60 * 1000) }
-          },
-          {
-            lockTime: new Date()
-          }
-        ).select({
+      const data = await MongoDatasetTraining.findOneAndUpdate(
+        {
+          mode: TrainingModeEnum.chunk,
+          lockTime: { $lte: new Date(Date.now() - 1 * 60 * 1000) }
+        },
+        {
+          lockTime: new Date()
+        }
+      )
+        .select({
           _id: 1,
           userId: 1,
           teamId: 1,
@@ -42,11 +52,12 @@ export async function generateVector(): Promise<any> {
           collectionId: 1,
           q: 1,
           a: 1,
+          chunkIndex: 1,
           indexes: 1,
           model: 1,
           billId: 1
         })
-      )?.toJSON();
+        .lean();
 
       // task preemption
       if (!data) {
@@ -57,8 +68,8 @@ export async function generateVector(): Promise<any> {
       return {
         data,
         dataItem: {
-          q: data.q.replace(/[\x00-\x08]/g, ' '),
-          a: data.a?.replace(/[\x00-\x08]/g, ' ') || '',
+          q: data.q,
+          a: data.a || '',
           indexes: data.indexes
         }
       };
@@ -70,12 +81,13 @@ export async function generateVector(): Promise<any> {
     }
   })();
 
-  if (done) {
-    reduceQueue();
-    global.vectorQueueLen <= 0 && console.log(`【index】Task done`);
+  if (done || !data) {
+    if (reduceQueue()) {
+      console.log(`【index】Task done`);
+    }
     return;
   }
-  if (error || !data) {
+  if (error) {
     reduceQueue();
     return generateVector();
   }
@@ -83,48 +95,52 @@ export async function generateVector(): Promise<any> {
   // auth balance
   try {
     await authTeamBalance(data.teamId);
-  } catch (error) {
-    // send inform and lock data
-    try {
-      sendOneInform({
-        type: 'system',
-        title: '文本训练任务中止',
-        content:
-          '该团队账号余额不足，文本训练任务中止，重新充值后将会继续。暂停的任务将在 7 天后被删除。',
-        tmbId: data.tmbId
-      });
-      console.log('余额不足，暂停【向量】生成任务');
-      await MongoDatasetTraining.updateMany(
-        {
-          teamId: data.teamId
-        },
-        {
-          lockTime: new Date('2999/5/5')
-        }
-      );
-    } catch (error) {}
+  } catch (error: any) {
+    if (error?.statusText === UserErrEnum.balanceNotEnough) {
+      // send inform and lock data
+      try {
+        sendOneInform({
+          type: 'system',
+          title: '文本训练任务中止',
+          content:
+            '该团队账号余额不足，文本训练任务中止，重新充值后将会继续。暂停的任务将在 7 天后被删除。',
+          tmbId: data.tmbId
+        });
+        console.log('余额不足，暂停【向量】生成任务');
+        lockTrainingDataByTeamId(data.teamId);
+      } catch (error) {}
+    }
+
     reduceQueue();
     return generateVector();
   }
 
   // create vector and insert
-
   try {
+    // invalid data
+    if (!data.q.trim()) {
+      await MongoDatasetTraining.findByIdAndDelete(data._id);
+      reduceQueue();
+      generateVector();
+      return;
+    }
+
     // insert data to pg
     const { tokenLen } = await insertData2Dataset({
       teamId: data.teamId,
-      tmbId: data.teamId,
+      tmbId: data.tmbId,
       datasetId: data.datasetId,
       collectionId: data.collectionId,
       q: dataItem.q,
       a: dataItem.a,
+      chunkIndex: data.chunkIndex,
       indexes: dataItem.indexes,
       model: data.model
     });
     // push bill
     pushGenerateVectorBill({
       teamId: data.teamId,
-      tmbId: data.teamId,
+      tmbId: data.tmbId,
       tokenLen: tokenLen,
       model: data.model,
       billId: data.billId
@@ -135,7 +151,7 @@ export async function generateVector(): Promise<any> {
     reduceQueue();
     generateVector();
   } catch (err: any) {
-    reduceQueue();
+    reduceQueue(true);
     // log
     if (err?.response) {
       addLog.info('openai error: 生成向量错误', {

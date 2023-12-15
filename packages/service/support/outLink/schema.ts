@@ -12,10 +12,6 @@ const OutLinkSchema = new Schema({
     type: String,
     required: true
   },
-  userId: {
-    type: Schema.Types.ObjectId,
-    ref: 'user'
-  },
   teamId: {
     type: Schema.Types.ObjectId,
     ref: TeamCollectionName,
@@ -71,3 +67,5 @@ const OutLinkSchema = new Schema({
 
 export const MongoOutLink: Model<SchemaType> =
   models['outlinks'] || model('outlinks', OutLinkSchema);
+
+MongoOutLink.syncIndexes();

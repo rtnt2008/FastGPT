@@ -7,8 +7,7 @@ import {
   useDisclosure,
   Card,
   MenuButton,
-  Image,
-  Link
+  Image
 } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useDatasetStore } from '@/web/core/dataset/store/dataset';
@@ -20,15 +19,19 @@ import {
   delDatasetById,
   getDatasetPaths,
   putDatasetById,
-  postCreateDataset
+  postCreateDataset,
+  getCheckExportLimit
 } from '@/web/core/dataset/api';
 import { useTranslation } from 'next-i18next';
 import Avatar from '@/components/Avatar';
 import MyIcon from '@/components/Icon';
 import { serviceSideProps } from '@/web/common/utils/i18n';
 import dynamic from 'next/dynamic';
-import { FolderAvatarSrc, DatasetTypeEnum } from '@fastgpt/global/core/dataset/constant';
-import Tag from '@/components/Tag';
+import {
+  FolderAvatarSrc,
+  DatasetTypeEnum,
+  DatasetTypeMap
+} from '@fastgpt/global/core/dataset/constant';
 import MyMenu from '@/components/MyMenu';
 import { useRequest } from '@/web/common/hooks/useRequest';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
@@ -38,6 +41,8 @@ import { useDrag } from '@/web/common/hooks/useDrag';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import PermissionIconText from '@/components/support/permission/IconText';
 import { PermissionTypeEnum } from '@fastgpt/global/support/permission/constant';
+import { DatasetItemType } from '@fastgpt/global/core/dataset/type';
+import ParentPaths from '@/components/common/ParentPaths';
 
 const CreateModal = dynamic(() => import('./component/CreateModal'), { ssr: false });
 const MoveModal = dynamic(() => import('./component/MoveModal'), { ssr: false });
@@ -52,12 +57,12 @@ const Kb = () => {
 
   const DeleteTipsMap = useRef({
     [DatasetTypeEnum.folder]: t('dataset.deleteFolderTips'),
-    [DatasetTypeEnum.dataset]: t('dataset.deleteDatasetTips')
+    [DatasetTypeEnum.dataset]: t('core.dataset.Delete Confirm'),
+    [DatasetTypeEnum.websiteDataset]: t('core.dataset.Delete Confirm')
   });
 
   const { openConfirm, ConfirmModal } = useConfirm({
-    title: t('common.Delete Warning'),
-    content: ''
+    type: 'delete'
   });
   const { myDatasets, loadDatasets, setDatasets, updateDataset } = useDatasetStore();
   const { onOpenModal: onOpenTitleModal, EditModal: EditTitleModal } = useEditTitle({
@@ -89,69 +94,68 @@ const Kb = () => {
     successToast: t('common.Delete Success'),
     errorToast: t('dataset.Delete Dataset Error')
   });
+  // check export limit
+  const { mutate: exportDataset } = useRequest({
+    mutationFn: async (dataset: DatasetItemType) => {
+      setLoading(true);
+      await getCheckExportLimit(dataset._id);
+      const a = document.createElement('a');
+      a.href = `/api/core/dataset/exportAll?datasetId=${dataset._id}`;
+      a.download = `${dataset.name}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    },
+    onSettled() {
+      setLoading(false);
+    },
+    errorToast: t('dataset.Export Dataset Limit Error')
+  });
 
-  const { data, refetch } = useQuery(['loadDataset', parentId], () => {
+  const { data, refetch, isFetching } = useQuery(['loadDataset', parentId], () => {
     return Promise.all([loadDatasets(parentId), getDatasetPaths(parentId)]);
   });
 
-  const paths = useMemo(
-    () => [
-      {
-        parentId: '',
-        parentName: t('dataset.My Dataset')
-      },
-      ...(data?.[1] || [])
-    ],
-    [data, t]
+  const paths = data?.[1] || [];
+
+  const formatDatasets = useMemo(
+    () =>
+      myDatasets.map((item) => {
+        return {
+          ...item,
+          label: DatasetTypeMap[item.type]?.label,
+          icon: DatasetTypeMap[item.type]?.icon
+        };
+      }),
+    [myDatasets]
   );
 
   return (
-    <PageContainer>
+    <PageContainer isLoading={isFetching}>
       <Flex pt={3} px={5} alignItems={'center'}>
         {/* url path */}
-        {!!parentId ? (
-          <Flex flex={1}>
-            {paths.map((item, i) => (
-              <Flex key={item.parentId} mr={2} alignItems={'center'}>
-                <Box
-                  fontSize={['sm', 'lg']}
-                  px={[0, 2]}
-                  py={1}
-                  borderRadius={'md'}
-                  {...(i === paths.length - 1
-                    ? {
-                        cursor: 'default'
-                      }
-                    : {
-                        cursor: 'pointer',
-                        _hover: {
-                          bg: 'myGray.100'
-                        },
-                        onClick: () => {
-                          router.push({
-                            query: {
-                              parentId: item.parentId
-                            }
-                          });
-                        }
-                      })}
-                >
-                  {item.parentName}
-                </Box>
-                {i !== paths.length - 1 && (
-                  <MyIcon name={'rightArrowLight'} color={'myGray.500'} w={['18px', '24px']} />
-                )}
-              </Flex>
-            ))}
-          </Flex>
-        ) : (
-          <Flex flex={1} alignItems={'center'}>
-            <Image src={'/imgs/module/db.png'} alt={''} mr={2} h={'24px'} />
-            <Box className="textlg" letterSpacing={1} fontSize={'24px'} fontWeight={'bold'}>
-              我的知识库
-            </Box>
-          </Flex>
-        )}
+        <ParentPaths
+          paths={paths.map((path, i) => ({
+            parentId: path.parentId,
+            parentName: path.parentName
+          }))}
+          FirstPathDom={
+            <Flex flex={1} alignItems={'center'}>
+              <Image src={'/imgs/module/db.png'} alt={''} mr={2} h={'24px'} />
+              <Box className="textlg" letterSpacing={1} fontSize={'24px'} fontWeight={'bold'}>
+                {t('core.dataset.My Dataset')}
+              </Box>
+            </Flex>
+          }
+          onClick={(e) => {
+            router.push({
+              query: {
+                parentId: e
+              }
+            });
+          }}
+        />
+        {/* create icon */}
         {userInfo?.team?.canWrite && (
           <MyMenu
             offset={[-30, 10]}
@@ -189,7 +193,7 @@ const Kb = () => {
                 child: (
                   <Flex>
                     <Image src={'/imgs/module/db.png'} alt={''} w={'20px'} mr={1} />
-                    {t('Dataset')}
+                    {t('core.dataset.Dataset')}
                   </Flex>
                 ),
                 onClick: onOpenCreateModal
@@ -204,15 +208,15 @@ const Kb = () => {
         gridGap={5}
         userSelect={'none'}
       >
-        {myDatasets.map((dataset) => (
+        {formatDatasets.map((dataset) => (
           <Card
             display={'flex'}
             flexDirection={'column'}
             key={dataset._id}
-            py={4}
+            py={3}
             px={5}
             cursor={'pointer'}
-            h={'130px'}
+            minH={'130px'}
             border={theme.borders.md}
             boxShadow={'none'}
             position={'relative'}
@@ -260,7 +264,7 @@ const Kb = () => {
                     parentId: dataset._id
                   }
                 });
-              } else if (dataset.type === DatasetTypeEnum.dataset) {
+              } else {
                 router.push({
                   pathname: '/dataset/detail',
                   query: {
@@ -357,7 +361,7 @@ const Kb = () => {
                   {
                     child: (
                       <Flex alignItems={'center'}>
-                        <MyIcon name={'moveLight'} w={'14px'} mr={2} />
+                        <MyIcon name={'common/file/move'} w={'14px'} mr={2} />
                         {t('Move')}
                       </Flex>
                     ),
@@ -371,12 +375,7 @@ const Kb = () => {
                       </Flex>
                     ),
                     onClick: () => {
-                      const a = document.createElement('a');
-                      a.href = `/api/core/dataset/exportAll?datasetId=${dataset._id}`;
-                      a.download = `${dataset.name}.csv`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
+                      exportDataset(dataset);
                     }
                   },
                   {
@@ -403,29 +402,22 @@ const Kb = () => {
                 {dataset.name}
               </Box>
             </Flex>
-            <Box flex={'1 0 0'} overflow={'hidden'} pt={2}>
-              <Flex>
-                {dataset.tags
-                  .filter((item) => item)
-                  .map((tag, i) => (
-                    <Tag key={i} mr={2} mb={2}>
-                      {tag}
-                    </Tag>
-                  ))}
-              </Flex>
+            <Box
+              flex={1}
+              className={'textEllipsis3'}
+              py={1}
+              wordBreak={'break-all'}
+              fontSize={'sm'}
+              color={'myGray.500'}
+            >
+              {dataset.intro || t('core.dataset.Intro Placeholder')}
             </Box>
             <Flex alignItems={'center'} fontSize={'sm'}>
               <Box flex={1}>
                 <PermissionIconText permission={dataset.permission} color={'myGray.600'} />
               </Box>
-              {dataset.type === DatasetTypeEnum.folder ? (
-                <Box color={'myGray.500'}>{t('Folder')}</Box>
-              ) : (
-                <>
-                  <MyIcon mr={1} name="kbTest" w={'12px'} />
-                  <Box color={'myGray.500'}>{dataset.vectorModel.name}</Box>
-                </>
-              )}
+              <MyIcon mr={1} name={dataset.icon as any} w={'12px'} />
+              <Box color={'myGray.500'}>{t(dataset.label)}</Box>
             </Flex>
           </Card>
         ))}
@@ -434,7 +426,7 @@ const Kb = () => {
         <Flex mt={'35vh'} flexDirection={'column'} alignItems={'center'}>
           <MyIcon name="empty" w={'48px'} h={'48px'} color={'transparent'} />
           <Box mt={2} color={'myGray.500'}>
-            还没有知识库，快去创建一个吧！
+            {t('core.dataset.Empty Dataset Tips')}
           </Box>
         </Flex>
       )}
@@ -446,27 +438,19 @@ const Kb = () => {
           onClose={() => setEditFolderData(undefined)}
           editCallback={async (name) => {
             try {
-              if (editFolderData.id) {
-                await putDatasetById({
-                  id: editFolderData.id,
-                  name
-                });
-              } else {
-                await postCreateDataset({
-                  parentId,
-                  name,
-                  type: DatasetTypeEnum.folder,
-                  avatar: FolderAvatarSrc,
-                  tags: ''
-                });
-              }
+              await postCreateDataset({
+                parentId,
+                name,
+                type: DatasetTypeEnum.folder,
+                avatar: FolderAvatarSrc,
+                intro: ''
+              });
               refetch();
             } catch (error) {
               return Promise.reject(error);
             }
           }}
-          isEdit={!!editFolderData.id}
-          name={editFolderData.name}
+          isEdit={false}
         />
       )}
       {!!moveDataId && (

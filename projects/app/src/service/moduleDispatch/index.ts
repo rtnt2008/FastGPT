@@ -1,17 +1,17 @@
 import { NextApiResponse } from 'next';
-import { SystemInputEnum, SystemOutputEnum } from '@/constants/app';
+import { ModuleInputKeyEnum } from '@fastgpt/global/core/module/constants';
+import { ModuleOutputKeyEnum } from '@fastgpt/global/core/module/constants';
 import { RunningModuleItemType } from '@/types/app';
 import { ModuleDispatchProps } from '@/types/core/chat/type';
-import { ChatHistoryItemResType } from '@fastgpt/global/core/chat/api';
-import { FlowNodeTypeEnum } from '@fastgpt/global/core/module/node/constant';
+import type { ChatHistoryItemResType, ChatItemType } from '@fastgpt/global/core/chat/type.d';
+import { FlowNodeInputTypeEnum, FlowNodeTypeEnum } from '@fastgpt/global/core/module/node/constant';
 import { ModuleItemType } from '@fastgpt/global/core/module/type';
 import { UserType } from '@fastgpt/global/support/user/type';
-import { TaskResponseKeyEnum } from '@fastgpt/global/core/chat/constants';
 import { replaceVariable } from '@fastgpt/global/common/string/tools';
 import { responseWrite } from '@fastgpt/service/common/response';
 import { sseResponseEventEnum } from '@fastgpt/service/common/response/constant';
 import { getSystemTime } from '@fastgpt/global/common/time/timezone';
-import { initModuleType } from '@/constants/flow';
+import { initRunningModuleType } from '../core/modules/constant';
 
 import { dispatchHistory } from './init/history';
 import { dispatchChatInput } from './init/userChatInput';
@@ -29,27 +29,39 @@ import { dispatchPluginOutput } from './plugin/runOutput';
 /* running */
 export async function dispatchModules({
   res,
-  chatId,
-  modules,
-  user,
   teamId,
   tmbId,
-  params = {},
+  user,
+  appId,
+  modules,
+  chatId,
+  histories = [],
+  startParams = {},
   variables = {},
   stream = false,
   detail = false
 }: {
   res: NextApiResponse;
-  chatId?: string;
-  modules: ModuleItemType[];
-  user: UserType;
   teamId: string;
   tmbId: string;
-  params?: Record<string, any>;
+  user: UserType;
+  appId: string;
+  modules: ModuleItemType[];
+  chatId?: string;
+  histories: ChatItemType[];
+  startParams?: Record<string, any>;
   variables?: Record<string, any>;
   stream?: boolean;
   detail?: boolean;
 }) {
+  // set sse response headers
+  if (stream) {
+    res.setHeader('Content-Type', 'text/event-stream;charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+  }
+
   variables = {
     ...getSystemVariable({ timezone: user.timezone }),
     ...variables
@@ -85,60 +97,66 @@ export async function dispatchModules({
     runningTime = time;
 
     const isResponseAnswerText =
-      inputs.find((item) => item.key === SystemInputEnum.isResponseAnswerText)?.value ?? true;
+      inputs.find((item) => item.key === ModuleInputKeyEnum.aiChatIsResponseText)?.value ?? true;
     if (isResponseAnswerText) {
       chatAnswerText += answerText;
     }
   }
-  function moduleInput(
-    module: RunningModuleItemType,
-    data: Record<string, any> = {}
-  ): Promise<any> {
-    const checkInputFinish = () => {
-      return !module.inputs.find((item: any) => item.value === undefined);
-    };
+  function moduleInput(module: RunningModuleItemType, data: Record<string, any> = {}) {
     const updateInputValue = (key: string, value: any) => {
       const index = module.inputs.findIndex((item: any) => item.key === key);
       if (index === -1) return;
       module.inputs[index].value = value;
     };
-
-    const set = new Set();
-
-    return Promise.all(
-      Object.entries(data).map(([key, val]: any) => {
-        updateInputValue(key, val);
-
-        if (!set.has(module.moduleId) && checkInputFinish()) {
-          set.add(module.moduleId);
-          // remove switch
-          updateInputValue(SystemInputEnum.switch, undefined);
-          return moduleRun(module);
-        }
-      })
-    );
+    Object.entries(data).map(([key, val]: any) => {
+      updateInputValue(key, val);
+    });
+    return;
   }
   function moduleOutput(
     module: RunningModuleItemType,
     result: Record<string, any> = {}
   ): Promise<any> {
     pushStore(module, result);
+
+    const nextRunModules: RunningModuleItemType[] = [];
+
+    // Assign the output value to the next module
+    module.outputs.map((outputItem) => {
+      if (result[outputItem.key] === undefined) return;
+      /* update output value */
+      outputItem.value = result[outputItem.key];
+
+      /* update target */
+      outputItem.targets.map((target: any) => {
+        // find module
+        const targetModule = runningModules.find((item) => item.moduleId === target.moduleId);
+        if (!targetModule) return;
+
+        // push to running queue
+        nextRunModules.push(targetModule);
+
+        // update input
+        moduleInput(targetModule, { [target.key]: outputItem.value });
+      });
+    });
+
+    return checkModulesCanRun(nextRunModules);
+  }
+  function checkModulesCanRun(modules: RunningModuleItemType[] = []) {
+    const set = new Set<string>();
+    const filterModules = modules.filter((module) => {
+      if (set.has(module.moduleId)) return false;
+      set.add(module.moduleId);
+      return true;
+    });
+
     return Promise.all(
-      module.outputs.map((outputItem) => {
-        if (result[outputItem.key] === undefined) return;
-        /* update output value */
-        outputItem.value = result[outputItem.key];
-
-        /* update target */
-        return Promise.all(
-          outputItem.targets.map((target: any) => {
-            // find module
-            const targetModule = runningModules.find((item) => item.moduleId === target.moduleId);
-            if (!targetModule) return;
-
-            return moduleInput(targetModule, { [target.key]: outputItem.value });
-          })
-        );
+      filterModules.map((module) => {
+        if (!module.inputs.find((item: any) => item.value === undefined)) {
+          moduleInput(module, { [ModuleInputKeyEnum.switch]: undefined });
+          return moduleRun(module);
+        }
       })
     );
   }
@@ -160,13 +178,16 @@ export async function dispatchModules({
     });
     const props: ModuleDispatchProps<Record<string, any>> = {
       res,
+      teamId,
+      tmbId,
+      user,
+      appId,
+      chatId,
       stream,
       detail,
       variables,
+      histories,
       outputs: module.outputs,
-      user,
-      teamId,
-      tmbId,
       inputs: params
     };
 
@@ -192,29 +213,34 @@ export async function dispatchModules({
     })();
 
     const formatResponseData = (() => {
-      if (!dispatchRes[TaskResponseKeyEnum.responseData]) return undefined;
-      if (Array.isArray(dispatchRes[TaskResponseKeyEnum.responseData]))
-        return dispatchRes[TaskResponseKeyEnum.responseData];
+      if (!dispatchRes[ModuleOutputKeyEnum.responseData]) return undefined;
+      if (Array.isArray(dispatchRes[ModuleOutputKeyEnum.responseData]))
+        return dispatchRes[ModuleOutputKeyEnum.responseData];
       return {
-        ...dispatchRes[TaskResponseKeyEnum.responseData],
         moduleName: module.name,
-        moduleType: module.flowType
+        moduleType: module.flowType,
+        ...dispatchRes[ModuleOutputKeyEnum.responseData]
       };
     })();
 
     return moduleOutput(module, {
-      [SystemOutputEnum.finish]: true,
+      [ModuleOutputKeyEnum.finish]: true,
       ...dispatchRes,
-      [TaskResponseKeyEnum.responseData]: formatResponseData
+      [ModuleOutputKeyEnum.responseData]: formatResponseData
     });
   }
 
   // start process width initInput
-  const initModules = runningModules.filter((item) => initModuleType[item.flowType]);
+  const initModules = runningModules.filter((item) => initRunningModuleType[item.flowType]);
+  initModules.map((module) =>
+    moduleInput(module, {
+      ...startParams,
+      history: [] // abandon history field. History module will get histories from other fields.
+    })
+  );
+  await checkModulesCanRun(initModules);
 
-  await Promise.all(initModules.map((module) => moduleInput(module, params)));
-
-  // focus running pluginOutput
+  // focus try to run pluginOutput
   const pluginOutputModule = runningModules.find(
     (item) => item.flowType === FlowNodeTypeEnum.pluginOutput
   );
@@ -223,8 +249,8 @@ export async function dispatchModules({
   }
 
   return {
-    [TaskResponseKeyEnum.answerText]: chatAnswerText,
-    [TaskResponseKeyEnum.responseData]: chatResponse
+    [ModuleOutputKeyEnum.answerText]: chatAnswerText,
+    [ModuleOutputKeyEnum.responseData]: chatResponse
   };
 }
 
@@ -233,45 +259,54 @@ function loadModules(
   modules: ModuleItemType[],
   variables: Record<string, any>
 ): RunningModuleItemType[] {
-  return modules.map((module) => {
-    return {
-      moduleId: module.moduleId,
-      name: module.name,
-      flowType: module.flowType,
-      showStatus: module.showStatus,
-      inputs: module.inputs
-        .filter((item) => item.connected) // filter unconnected target input
-        .map((item) => {
-          if (typeof item.value !== 'string') {
+  return modules
+    .filter((item) => {
+      return ![FlowNodeTypeEnum.userGuide].includes(item.moduleId as any);
+    })
+    .map((module) => {
+      return {
+        moduleId: module.moduleId,
+        name: module.name,
+        flowType: module.flowType,
+        showStatus: module.showStatus,
+        inputs: module.inputs
+          .filter(
+            (item) =>
+              item.type === FlowNodeInputTypeEnum.systemInput ||
+              item.connected ||
+              item.value !== undefined
+          ) // filter unconnected target input
+          .map((item) => {
+            if (typeof item.value !== 'string') {
+              return {
+                key: item.key,
+                value: item.value
+              };
+            }
+
+            // variables replace
+            const replacedVal = replaceVariable(item.value, variables);
+
             return {
               key: item.key,
-              value: item.value
+              value: replacedVal
             };
-          }
-
-          // variables replace
-          const replacedVal = replaceVariable(item.value, variables);
-
-          return {
+          }),
+        outputs: module.outputs
+          .map((item) => ({
             key: item.key,
-            value: replacedVal
-          };
-        }),
-      outputs: module.outputs
-        .map((item) => ({
-          key: item.key,
-          answer: item.key === TaskResponseKeyEnum.answerText,
-          value: undefined,
-          targets: item.targets
-        }))
-        .sort((a, b) => {
-          // finish output always at last
-          if (a.key === SystemOutputEnum.finish) return 1;
-          if (b.key === SystemOutputEnum.finish) return -1;
-          return 0;
-        })
-    };
-  });
+            answer: item.key === ModuleOutputKeyEnum.answerText,
+            value: undefined,
+            targets: item.targets
+          }))
+          .sort((a, b) => {
+            // finish output always at last
+            if (a.key === ModuleOutputKeyEnum.finish) return 1;
+            if (b.key === ModuleOutputKeyEnum.finish) return -1;
+            return 0;
+          })
+      };
+    });
 }
 
 /* sse response modules staus */

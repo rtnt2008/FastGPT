@@ -1,7 +1,10 @@
 import { connectionMongo, type Model } from '../../../common/mongo';
 const { Schema, model, models } = connectionMongo;
 import { DatasetCollectionSchemaType } from '@fastgpt/global/core/dataset/type.d';
-import { DatasetCollectionTypeMap } from '@fastgpt/global/core/dataset/constant';
+import {
+  DatasetCollectionTrainingTypeMap,
+  DatasetCollectionTypeMap
+} from '@fastgpt/global/core/dataset/constant';
 import { DatasetCollectionName } from '../schema';
 import {
   TeamCollectionName,
@@ -36,41 +39,56 @@ const DatasetCollectionSchema = new Schema({
     ref: DatasetCollectionName,
     required: true
   },
-  name: {
-    type: String,
-    required: true
-  },
   type: {
     type: String,
     enum: Object.keys(DatasetCollectionTypeMap),
     required: true
   },
+  name: {
+    type: String,
+    required: true
+  },
+  createTime: {
+    type: Date,
+    default: () => new Date()
+  },
   updateTime: {
     type: Date,
     default: () => new Date()
   },
+  trainingType: {
+    type: String,
+    enum: Object.keys(DatasetCollectionTrainingTypeMap),
+    required: true
+  },
+  chunkSize: {
+    type: Number,
+    required: true
+  },
+  fileId: {
+    type: Schema.Types.ObjectId,
+    ref: 'dataset.files'
+  },
+  rawLink: {
+    type: String
+  },
+  qaPrompt: {
+    type: String
+  },
+  hashRawText: {
+    type: String
+  },
   metadata: {
-    type: {
-      fileId: {
-        type: Schema.Types.ObjectId,
-        ref: 'dataset.files'
-      },
-      rawLink: {
-        type: String
-      },
-      // 451 初始化
-      pgCollectionId: {
-        type: String
-      }
-    },
+    type: Object,
     default: {}
   }
 });
 
 try {
   DatasetCollectionSchema.index({ datasetId: 1 });
-  DatasetCollectionSchema.index({ userId: 1 });
+  DatasetCollectionSchema.index({ datasetId: 1, parentId: 1 });
   DatasetCollectionSchema.index({ updateTime: -1 });
+  DatasetCollectionSchema.index({ hashRawText: -1 });
 } catch (error) {
   console.log(error);
 }

@@ -8,7 +8,7 @@ import {
 } from '@fastgpt/service/support/user/team/controller';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { UserModelSchema } from '@fastgpt/global/support/user/type';
-import { delay } from '@/utils/tools';
+import { delay } from '@fastgpt/global/common/system/utils';
 import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import { PermissionTypeEnum } from '@fastgpt/global/support/permission/constant';
 import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection/schema';
@@ -264,7 +264,7 @@ async function initCollectionFileTeam(limit: number) {
 
       await DatasetFile.updateMany(
         {
-          userId,
+          'metadata.userId': String(userId),
           ...matchWhere
         },
         {
@@ -295,7 +295,7 @@ async function initPgData() {
     ]);
   } catch (error) {
     console.log(error);
-    console.log('column exits');
+    console.log('column exists');
   }
 
   const { rows } = await PgClient.query<{ user_id: string }>(`

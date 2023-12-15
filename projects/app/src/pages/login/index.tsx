@@ -9,7 +9,7 @@ import { useChatStore } from '@/web/core/chat/storeChat';
 import LoginForm from './components/LoginForm';
 import dynamic from 'next/dynamic';
 import { serviceSideProps } from '@/web/common/utils/i18n';
-import { setToken } from '@/web/support/user/auth';
+import { clearToken, setToken } from '@/web/support/user/auth';
 import { feConfigs } from '@/web/common/system/staticData';
 import CommunityModal from '@/components/CommunityModal';
 import Script from 'next/script';
@@ -53,6 +53,7 @@ const Login = () => {
   }
 
   useEffect(() => {
+    clearToken();
     router.prefetch('/app/list');
   }, []);
 
@@ -112,10 +113,10 @@ const Login = () => {
           >
             <DynamicComponent type={pageType} />
 
-            {feConfigs?.show_contact && (
+            {feConfigs?.concatMd && (
               <Box
-                fontSize={'sm'}
-                color={'myGray.600'}
+                fontWeight={'bold'}
+                color={'myBlue.700'}
                 cursor={'pointer'}
                 position={'absolute'}
                 right={5}

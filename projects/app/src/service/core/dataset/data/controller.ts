@@ -4,10 +4,12 @@ import {
   PatchIndexesProps,
   UpdateDatasetDataProps
 } from '@fastgpt/global/core/dataset/controller';
-import { deletePgDataById, insertData2Pg, updatePgDataById } from './pg';
+import { deletePgDataById } from '@fastgpt/service/core/dataset/data/pg';
+import { insertData2Pg, updatePgDataById } from './pg';
 import { Types } from 'mongoose';
 import { DatasetDataIndexTypeEnum } from '@fastgpt/global/core/dataset/constant';
 import { getDefaultIndex } from '@fastgpt/global/core/dataset/utils';
+import { jiebaSplit } from '../utils';
 
 /* insert data.
  * 1. create data id
@@ -21,17 +23,19 @@ export async function insertData2Dataset({
   collectionId,
   q,
   a = '',
+  chunkIndex = 0,
   indexes,
   model
 }: CreateDatasetDataProps & {
   model: string;
 }) {
   if (!q || !datasetId || !collectionId || !model) {
+    console.log(q, a, datasetId, collectionId, model);
     return Promise.reject('q, datasetId, collectionId, model is required');
   }
-
-  q = q.trim();
-  a = a.trim();
+  if (String(teamId) === String(tmbId)) {
+    return Promise.reject("teamId and tmbId can't be the same");
+  }
 
   const id = new Types.ObjectId();
   const qaStr = `${q}\n${a}`.trim();
@@ -70,6 +74,8 @@ export async function insertData2Dataset({
     collectionId,
     q,
     a,
+    fullTextToken: jiebaSplit({ text: qaStr }),
+    chunkIndex,
     indexes: indexes.map((item, i) => ({
       ...item,
       dataId: result[i].insertId
@@ -199,6 +205,7 @@ export async function updateData2Dataset({
   // update mongo
   mongoData.q = q || mongoData.q;
   mongoData.a = a ?? mongoData.a;
+  mongoData.fullTextToken = jiebaSplit({ text: mongoData.q + mongoData.a });
   // @ts-ignore
   mongoData.indexes = indexes;
   await mongoData.save();
@@ -206,30 +213,4 @@ export async function updateData2Dataset({
   return {
     tokenLen
   };
-}
-
-/* delete all data by datasetIds */
-export async function delDataByDatasetId({ datasetIds }: { datasetIds: string[] }) {
-  datasetIds = datasetIds.map((item) => String(item));
-  // delete pg data
-  await deletePgDataById(`dataset_id IN ('${datasetIds.join("','")}')`);
-  // delete dataset.datas
-  await MongoDatasetData.deleteMany({ datasetId: { $in: datasetIds } });
-}
-/**
- * delete all data by collectionIds
- */
-export async function delDataByCollectionId({ collectionIds }: { collectionIds: string[] }) {
-  const ids = collectionIds.map((item) => String(item));
-  // delete pg data
-  await deletePgDataById(`collection_id IN ('${ids.join("','")}')`);
-  // delete dataset.datas
-  await MongoDatasetData.deleteMany({ collectionId: { $in: ids } });
-}
-/**
- * delete one data by mongoDataId
- */
-export async function deleteDataByDataId(mongoDataId: string) {
-  await deletePgDataById(['data_id', mongoDataId]);
-  await MongoDatasetData.findByIdAndDelete(mongoDataId);
 }

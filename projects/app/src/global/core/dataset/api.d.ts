@@ -1,14 +1,23 @@
 import { PushDatasetDataChunkProps } from '@fastgpt/global/core/dataset/api';
-import { TrainingModeEnum } from '@fastgpt/global/core/dataset/constant';
-import { DatasetDataIndexItemType } from '@fastgpt/global/core/dataset/type';
+import {
+  DatasetSearchModeEnum,
+  DatasetTypeEnum,
+  TrainingModeEnum
+} from '@fastgpt/global/core/dataset/constant';
+import {
+  DatasetDataIndexItemType,
+  SearchDataResponseItemType
+} from '@fastgpt/global/core/dataset/type';
 
 /* ================= dataset ===================== */
 export type CreateDatasetParams = {
   parentId?: string;
+  type: `${DatasetTypeEnum}`;
   name: string;
-  tags: string;
+  intro: string;
   avatar: string;
   vectorModel?: string;
+  agentModel?: string;
   type: `${DatasetTypeEnum}`;
 };
 
@@ -32,4 +41,16 @@ export type UpdateDatasetDataProps = {
   indexes: (Omit<DatasetDataIndexItemType, 'dataId'> & {
     dataId?: string; // pg data id
   })[];
+};
+
+/* -------------- search ---------------- */
+export type SearchTestProps = {
+  datasetId: string;
+  text: string;
+  limit?: number;
+  searchMode?: `${DatasetSearchModeEnum}`;
+};
+export type SearchTestResponse = {
+  list: SearchDataResponseItemType[];
+  duration: string;
 };

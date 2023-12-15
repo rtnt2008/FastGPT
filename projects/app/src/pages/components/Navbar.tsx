@@ -7,6 +7,7 @@ import Avatar from '@/components/Avatar';
 import CommunityModal from '@/components/CommunityModal';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyIcon from '@/components/Icon';
+import { getDocPath } from '@/web/common/system/doc';
 
 const Navbar = () => {
   const router = useRouter();
@@ -20,7 +21,7 @@ const Navbar = () => {
   const { isOpen: isOpenMenu, onOpen: onOpenMenu, onClose: onCloseMenu } = useDisclosure();
   const { isPc } = useSystemStore();
   const menuList = [
-    ...(feConfigs?.show_contact
+    ...(feConfigs?.concatMd
       ? [
           {
             label: t('home.Commercial'),
@@ -41,13 +42,13 @@ const Navbar = () => {
           }
         ]
       : []),
-    ...(feConfigs?.show_doc
+    ...(feConfigs?.docUrl
       ? [
           {
             label: t('home.Docs'),
             key: 'docs',
             onClick: () => {
-              window.open(`${feConfigs.docUrl}/docs/intro`);
+              window.open(getDocPath('/docs/intro'));
             }
           }
         ]

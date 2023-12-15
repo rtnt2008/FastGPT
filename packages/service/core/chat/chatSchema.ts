@@ -1,16 +1,13 @@
 import { connectionMongo, type Model } from '../../common/mongo';
 const { Schema, model, models } = connectionMongo;
 import { ChatSchema as ChatType } from '@fastgpt/global/core/chat/type.d';
-import {
-  ChatRoleMap,
-  ChatSourceMap,
-  TaskResponseKeyEnum
-} from '@fastgpt/global/core/chat/constants';
+import { ChatRoleMap, ChatSourceMap } from '@fastgpt/global/core/chat/constants';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
 } from '@fastgpt/global/support/user/team/constant';
 import { appCollectionName } from '../app/schema';
+import { ModuleOutputKeyEnum } from '@fastgpt/global/core/module/constants';
 
 export const chatCollectionName = 'chat';
 
@@ -53,10 +50,6 @@ const ChatSchema = new Schema({
   top: {
     type: Boolean
   },
-  variables: {
-    type: Object,
-    default: {}
-  },
   source: {
     type: String,
     enum: Object.keys(ChatSourceMap),
@@ -65,9 +58,17 @@ const ChatSchema = new Schema({
   shareId: {
     type: String
   },
-  isInit: {
-    type: Boolean,
-    default: false
+  outLinkUid: {
+    type: String
+  },
+  variables: {
+    type: Object,
+    default: {}
+  },
+  metadata: {
+    //For special storage
+    type: Object,
+    default: {}
   },
   content: {
     type: [
@@ -81,7 +82,7 @@ const ChatSchema = new Schema({
           type: String,
           default: ''
         },
-        [TaskResponseKeyEnum.responseData]: {
+        [ModuleOutputKeyEnum.responseData]: {
           type: Array,
           default: []
         }
@@ -92,12 +93,14 @@ const ChatSchema = new Schema({
 });
 
 try {
-  ChatSchema.index({ userId: 1 });
-  ChatSchema.index({ updateTime: -1 });
   ChatSchema.index({ appId: 1 });
+  ChatSchema.index({ tmbId: 1 });
+  ChatSchema.index({ shareId: 1 });
+  ChatSchema.index({ updateTime: -1 });
 } catch (error) {
   console.log(error);
 }
 
 export const MongoChat: Model<ChatType> =
   models[chatCollectionName] || model(chatCollectionName, ChatSchema);
+MongoChat.syncIndexes();

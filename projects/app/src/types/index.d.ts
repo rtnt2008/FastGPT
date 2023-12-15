@@ -3,9 +3,12 @@ import {
   ChatModelItemType,
   FunctionModelItemType,
   LLMModelItemType,
-  VectorModelItemType
+  ReRankModelItemType,
+  VectorModelItemType,
+  WhisperModelType
 } from '@fastgpt/global/core/ai/model.d';
 import { TrackEventName } from '@/constants/common';
+import { AppSimpleEditConfigTemplateType } from '@fastgpt/global/core/app/type';
 
 export type PagingData<T> = {
   pageNum: number;
@@ -27,9 +30,13 @@ declare global {
   var extractModels: FunctionModelItemType[];
   var qgModels: LLMModelItemType[];
   var audioSpeechModels: AudioSpeechModelType[];
+  var whisperModel: WhisperModelType;
+  var reRankModels: ReRankModelItemType[];
 
   var priceMd: string;
   var systemVersion: string;
+
+  var simpleModeTemplates: AppSimpleEditConfigTemplateType[];
 
   interface Window {
     ['pdfjs-dist/build/pdf']: any;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppProps } from 'next/app';
 import Script from 'next/script';
 import Head from 'next/head';
@@ -27,6 +27,7 @@ Router.events.on('routeChangeError', () => NProgress.done());
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      keepPreviousData: true,
       refetchOnWindowFocus: false,
       retry: false,
       cacheTime: 10
@@ -38,15 +39,17 @@ function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
   const { hiId } = router.query as { hiId?: string };
   const { i18n } = useTranslation();
-  const { setLastRoute } = useSystemStore();
   const [scripts, setScripts] = useState<FeConfigsType['scripts']>([]);
+  const [title, setTitle] = useState(process.env.SYSTEM_NAME || 'AI');
 
   useEffect(() => {
     // get init data
     (async () => {
       const {
-        feConfigs: { scripts, isPlus }
+        feConfigs: { scripts, isPlus, systemTitle }
       } = await clientInitData();
+
+      setTitle(systemTitle || 'FastGPT');
 
       // log fastgpt
       !isPlus &&
@@ -92,16 +95,16 @@ function App({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
-        <title>{feConfigs?.systemTitle || process.env.SYSTEM_NAME || 'GPT'}</title>
+        <title>{title}</title>
         <meta
           name="description"
-          content="FastGPT is a knowledge-based question answering system built on the LLM. It offers out-of-the-box data processing and model invocation capabilities. Moreover, it allows for workflow orchestration through Flow visualization, thereby enabling complex question and answer scenarios!"
+          content={`${title} 是一个大模型应用编排系统，提供开箱即用的数据处理、模型调用等能力，可以快速的构建知识库并通过 Flow 可视化进行工作流编排，实现复杂的知识库场景！`}
         />
         <meta
           name="viewport"
           content="width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no, viewport-fit=cover"
         />
-        <link rel="icon" href={feConfigs.favicon || '/favicon.ico'} />
+        <link rel="icon" href={feConfigs.favicon || process.env.SYSTEM_FAVICON} />
       </Head>
       {scripts?.map((item, i) => <Script key={i} strategy="lazyOnload" {...item}></Script>)}
 

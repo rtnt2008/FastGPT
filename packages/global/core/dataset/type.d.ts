@@ -1,9 +1,10 @@
-import type { VectorModelItemType } from '../../core/ai/model.d';
+import type { LLMModelItemType, VectorModelItemType } from '../../core/ai/model.d';
 import { PermissionTypeEnum } from '../../support/permission/constant';
 import { PushDatasetDataChunkProps } from './api';
 import {
   DatasetCollectionTypeEnum,
   DatasetDataIndexTypeEnum,
+  DatasetStatusEnum,
   DatasetTypeEnum,
   TrainingModeEnum
 } from './constant';
@@ -19,26 +20,34 @@ export type DatasetSchemaType = {
   avatar: string;
   name: string;
   vectorModel: string;
-  tags: string[];
+  agentModel: string;
+  intro: string;
   type: `${DatasetTypeEnum}`;
+  status: `${DatasetStatusEnum}`;
   permission: `${PermissionTypeEnum}`;
+  websiteConfig?: {
+    url: string;
+    selector: string;
+  };
 };
 
 export type DatasetCollectionSchemaType = {
   _id: string;
-  userId: string;
   teamId: string;
   tmbId: string;
   datasetId: string;
   parentId?: string;
   name: string;
   type: `${DatasetCollectionTypeEnum}`;
+  createTime: Date;
   updateTime: Date;
-  metadata: {
-    fileId?: string;
-    rawLink?: string;
-    pgCollectionId?: string;
-  };
+  trainingType: `${TrainingModeEnum}`;
+  chunkSize: number;
+  fileId?: string;
+  rawLink?: string;
+  qaPrompt?: string;
+  hashRawText?: string;
+  metadata?: Record<string, any>;
 };
 
 export type DatasetDataIndexItemType = {
@@ -56,8 +65,11 @@ export type DatasetDataSchemaType = {
   collectionId: string;
   datasetId: string;
   collectionId: string;
+  chunkIndex: number;
+  updateTime: Date;
   q: string; // large chunks or question
   a: string; // answer or custom content
+  fullTextToken: string;
   indexes: DatasetDataIndexItemType[];
 };
 
@@ -76,16 +88,33 @@ export type DatasetTrainingSchemaType = {
   prompt: string;
   q: string;
   a: string;
+  chunkIndex: number;
   indexes: Omit<DatasetDataIndexItemType, 'dataId'>[];
 };
 
 export type CollectionWithDatasetType = Omit<DatasetCollectionSchemaType, 'datasetId'> & {
   datasetId: DatasetSchemaType;
 };
+export type DatasetDataWithCollectionType = Omit<DatasetDataSchemaType, 'collectionId'> & {
+  collectionId: DatasetCollectionSchemaType;
+};
 
 /* ================= dataset ===================== */
-export type DatasetItemType = Omit<DatasetSchemaType, 'vectorModel'> & {
+export type DatasetListItemType = {
+  _id: string;
+  parentId: string;
+  avatar: string;
+  name: string;
+  intro: string;
+  type: `${DatasetTypeEnum}`;
+  isOwner: boolean;
+  canWrite: boolean;
+  permission: `${PermissionTypeEnum}`;
   vectorModel: VectorModelItemType;
+};
+export type DatasetItemType = Omit<DatasetSchemaType, 'vectorModel' | 'agentModel'> & {
+  vectorModel: VectorModelItemType;
+  agentModel: LLMModelItemType;
   isOwner: boolean;
   canWrite: boolean;
 };
@@ -95,6 +124,7 @@ export type DatasetCollectionItemType = CollectionWithDatasetType & {
   canWrite: boolean;
   sourceName: string;
   sourceId?: string;
+  file?: DatasetFileSchema;
 };
 
 /* ================= data ===================== */
@@ -106,6 +136,7 @@ export type DatasetDataItemType = {
   sourceId?: string;
   q: string;
   a: string;
+  chunkIndex: number;
   indexes: DatasetDataIndexItemType[];
   isOwner: boolean;
   canWrite: boolean;
@@ -128,6 +159,6 @@ export type DatasetFileSchema = {
 };
 
 /* ============= search =============== */
-export type SearchDataResponseItemType = DatasetDataItemType & {
+export type SearchDataResponseItemType = Omit<DatasetDataItemType, 'isOwner' | 'canWrite'> & {
   score: number;
 };

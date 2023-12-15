@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
 import { connectToDatabase } from '@/service/mongo';
-import { delay } from '@/utils/tools';
+import { delay } from '@fastgpt/global/common/system/utils';
 import { PgClient } from '@fastgpt/service/common/pg';
 import {
   DatasetDataIndexTypeEnum,
@@ -11,6 +11,8 @@ import {
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { MongoDatasetData } from '@fastgpt/service/core/dataset/data/schema';
 import { getUserDefaultTeam } from '@fastgpt/service/support/user/team/controller';
+import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
+import { defaultQAModels } from '@fastgpt/global/core/ai/model';
 
 let success = 0;
 /* pg 中的数据搬到 mongo dataset.datas 中，并做映射 */
@@ -39,7 +41,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ]);
     } catch (error) {}
 
-    await initPgData();
+    try {
+      await initPgData();
+    } catch (error) {}
+
+    await MongoDataset.updateMany(
+      {},
+      {
+        agentModel: defaultQAModels[0].model
+      }
+    );
 
     jsonRes(res, {
       data: await init(limit),
@@ -76,14 +87,19 @@ async function initPgData() {
   for (let i = 0; i < limit; i++) {
     init(i);
   }
+
   async function init(index: number): Promise<any> {
     const userId = rows[index]?.user_id;
     if (!userId) return;
     try {
       const tmb = await getUserDefaultTeam({ userId });
+      console.log(tmb);
+
       // update pg
       await PgClient.query(
-        `Update ${PgDatasetTableName} set team_id = '${tmb.teamId}', tmb_id = '${tmb.tmbId}' where user_id = '${userId}' AND team_id='null';`
+        `Update ${PgDatasetTableName} set team_id = '${String(tmb.teamId)}', tmb_id = '${String(
+          tmb.tmbId
+        )}' where user_id = '${userId}' AND team_id='null';`
       );
       console.log(++success);
       init(index + limit);
@@ -136,6 +152,7 @@ async function init(limit: number): Promise<any> {
         collectionId: data.collection_id,
         q: data.q,
         a: data.a,
+        fullTextToken: '',
         indexes: [
           {
             defaultIndex: !data.a,

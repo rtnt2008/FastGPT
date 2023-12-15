@@ -1,12 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
 import { connectToDatabase } from '@/service/mongo';
-import { MongoChatItem } from '@fastgpt/service/core/chat/chatItemSchema';
 import { GetChatSpeechProps } from '@/global/core/chat/api.d';
 import { text2Speech } from '@fastgpt/service/core/ai/audio/speech';
 import { pushAudioSpeechBill } from '@/service/support/wallet/bill/push';
-import { authCert } from '@fastgpt/service/support/permission/auth/common';
+import { authCertOrShareId } from '@fastgpt/service/support/permission/auth/common';
 import { authType2BillSource } from '@/service/support/wallet/bill/utils';
+import { getAudioSpeechModel } from '@/service/core/ai/model';
+import { MongoTTSBuffer } from '@fastgpt/service/common/buffer/tts/schema';
 
 /* 
 1. get tts from chatItem store
@@ -18,50 +19,62 @@ import { authType2BillSource } from '@/service/support/wallet/bill/utils';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     await connectToDatabase();
-    const { chatItemId, ttsConfig, input } = req.body as GetChatSpeechProps;
+    const { ttsConfig, input, shareId } = req.body as GetChatSpeechProps;
 
-    const { teamId, tmbId, authType } = await authCert({ req, authToken: true });
-
-    const chatItem = await (async () => {
-      if (!chatItemId) return null;
-      return await MongoChatItem.findOne(
-        {
-          dataId: chatItemId
-        },
-        'tts'
-      );
-    })();
-
-    if (chatItem?.tts) {
-      return jsonRes(res, {
-        data: chatItem.tts
-      });
+    if (!ttsConfig.model || !ttsConfig.voice) {
+      throw new Error('model or voice not found');
     }
 
-    const { tts, model } = await text2Speech({
+    const { teamId, tmbId, authType } = await authCertOrShareId({ req, authToken: true, shareId });
+
+    const ttsModel = getAudioSpeechModel(ttsConfig.model);
+    const voiceData = ttsModel.voices?.find((item) => item.value === ttsConfig.voice);
+
+    if (!voiceData) {
+      throw new Error('voice not found');
+    }
+
+    const ttsBuffer = await MongoTTSBuffer.findOne(
+      {
+        bufferId: voiceData.bufferId,
+        text: JSON.stringify({ text: input, speed: ttsConfig.speed })
+      },
+      'buffer'
+    );
+
+    if (ttsBuffer?.buffer) {
+      return res.end(new Uint8Array(ttsBuffer.buffer.buffer));
+    }
+
+    await text2Speech({
+      res,
+      input,
       model: ttsConfig.model,
       voice: ttsConfig.voice,
-      input
-    });
+      speed: ttsConfig.speed,
+      onSuccess: async ({ model, buffer }) => {
+        try {
+          pushAudioSpeechBill({
+            model: model,
+            textLength: input.length,
+            tmbId,
+            teamId,
+            source: authType2BillSource({ authType })
+          });
 
-    (async () => {
-      if (!chatItem) return;
-      try {
-        chatItem.tts = tts;
-        await chatItem.save();
-      } catch (error) {}
-    })();
-
-    jsonRes(res, {
-      data: tts
-    });
-
-    pushAudioSpeechBill({
-      model: model,
-      textLength: input.length,
-      tmbId,
-      teamId,
-      source: authType2BillSource({ authType })
+          await MongoTTSBuffer.create({
+            bufferId: voiceData.bufferId,
+            text: JSON.stringify({ text: input, speed: ttsConfig.speed }),
+            buffer
+          });
+        } catch (error) {}
+      },
+      onError: (err) => {
+        jsonRes(res, {
+          code: 500,
+          error: err
+        });
+      }
     });
   } catch (err) {
     jsonRes(res, {

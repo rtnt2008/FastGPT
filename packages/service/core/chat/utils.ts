@@ -1,7 +1,9 @@
 import type { ChatItemType } from '@fastgpt/global/core/chat/type.d';
-import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
+import { ChatRoleEnum, IMG_BLOCK_KEY } from '@fastgpt/global/core/chat/constants';
 import { countMessagesTokens, countPromptTokens } from '@fastgpt/global/common/string/tiktoken';
 import { adaptRole_Chat2Message } from '@fastgpt/global/core/chat/adapt';
+import type { ChatCompletionContentPart } from '@fastgpt/global/core/ai/type.d';
+import axios from 'axios';
 
 /* slice chat context by tokens */
 export function ChatContextFilter({
@@ -50,4 +52,117 @@ export function ChatContextFilter({
   }
 
   return [...systemPrompts, ...chats];
+}
+
+/**
+    string to vision model. Follow the markdown code block rule for interception:
+
+    @rule:
+    ```img-block
+        {src:""}
+        {src:""}
+    ```
+    ```file-block
+        {name:"",src:""},
+        {name:"",src:""}
+    ```
+    @example:
+        What’s in this image?
+        ```img-block
+            {src:"https://1.png"}
+        ```
+    @return 
+        [
+            { type: 'text', text: 'What’s in this image?' },
+            {
+              type: 'image_url',
+              image_url: {
+                url: 'https://1.png'
+              }
+            }
+        ]
+ */
+export async function formatStr2ChatContent(str: string) {
+  const content: ChatCompletionContentPart[] = [];
+  let lastIndex = 0;
+  const regex = new RegExp(`\`\`\`(${IMG_BLOCK_KEY})\\n([\\s\\S]*?)\`\`\``, 'g');
+
+  const imgKey: 'image_url' = 'image_url';
+
+  let match;
+
+  while ((match = regex.exec(str)) !== null) {
+    // add previous text
+    if (match.index > lastIndex) {
+      const text = str.substring(lastIndex, match.index).trim();
+      if (text) {
+        content.push({ type: 'text', text });
+      }
+    }
+
+    const blockType = match[1].trim();
+
+    if (blockType === IMG_BLOCK_KEY) {
+      const blockContentLines = match[2].trim().split('\n');
+      const jsonLines = blockContentLines.map((item) => {
+        try {
+          return JSON.parse(item) as { src: string };
+        } catch (error) {
+          return { src: '' };
+        }
+      });
+
+      for (const item of jsonLines) {
+        if (!item.src) throw new Error("image block's content error");
+      }
+
+      content.push(
+        ...jsonLines.map((item) => ({
+          type: imgKey,
+          image_url: {
+            url: item.src
+          }
+        }))
+      );
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  // add remaining text
+  if (lastIndex < str.length) {
+    const remainingText = str.substring(lastIndex).trim();
+    if (remainingText) {
+      content.push({ type: 'text', text: remainingText });
+    }
+  }
+
+  // Continuous text type content, if type=text, merge them
+  for (let i = 0; i < content.length - 1; i++) {
+    const currentContent = content[i];
+    const nextContent = content[i + 1];
+    if (currentContent.type === 'text' && nextContent.type === 'text') {
+      currentContent.text += nextContent.text;
+      content.splice(i + 1, 1);
+      i--;
+    }
+  }
+
+  if (content.length === 1 && content[0].type === 'text') {
+    return content[0].text;
+  }
+
+  if (!content) return null;
+  // load img to base64
+  for await (const item of content) {
+    if (item.type === imgKey && item[imgKey]?.url) {
+      const response = await axios.get(item[imgKey].url, {
+        responseType: 'arraybuffer'
+      });
+      const base64 = Buffer.from(response.data).toString('base64');
+      item[imgKey].url = `data:${response.headers['content-type']};base64,${base64}`;
+    }
+  }
+
+  return content ? content : null;
 }

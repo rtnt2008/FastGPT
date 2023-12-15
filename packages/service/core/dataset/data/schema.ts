@@ -7,7 +7,10 @@ import {
 } from '@fastgpt/global/support/user/team/constant';
 import { DatasetCollectionName } from '../schema';
 import { DatasetColCollectionName } from '../collection/schema';
-import { DatasetDataIndexTypeMap } from '@fastgpt/global/core/dataset/constant';
+import {
+  DatasetDataIndexTypeEnum,
+  DatasetDataIndexTypeMap
+} from '@fastgpt/global/core/dataset/constant';
 
 export const DatasetDataCollectionName = 'dataset.datas';
 
@@ -40,6 +43,10 @@ const DatasetDataSchema = new Schema({
     type: String,
     default: ''
   },
+  fullTextToken: {
+    type: String,
+    default: ''
+  },
   indexes: {
     type: [
       {
@@ -50,7 +57,7 @@ const DatasetDataSchema = new Schema({
         type: {
           type: String,
           enum: Object.keys(DatasetDataIndexTypeMap),
-          required: true
+          default: DatasetDataIndexTypeEnum.custom
         },
         dataId: {
           type: String,
@@ -63,16 +70,32 @@ const DatasetDataSchema = new Schema({
       }
     ],
     default: []
+  },
+  updateTime: {
+    type: Date,
+    default: () => new Date()
+  },
+  chunkIndex: {
+    type: Number,
+    default: 0
+  },
+  inited: {
+    type: Boolean
   }
 });
 
 try {
-  DatasetDataSchema.index({ userId: 1 });
+  DatasetDataSchema.index({ teamId: 1 });
   DatasetDataSchema.index({ datasetId: 1 });
   DatasetDataSchema.index({ collectionId: 1 });
+  DatasetDataSchema.index({ updateTime: -1 });
+  // full text index
+  DatasetDataSchema.index({ datasetId: 1, fullTextToken: 'text' });
+  DatasetDataSchema.index({ inited: 1 });
 } catch (error) {
   console.log(error);
 }
 
 export const MongoDatasetData: Model<DatasetDataSchemaType> =
   models[DatasetDataCollectionName] || model(DatasetDataCollectionName, DatasetDataSchema);
+MongoDatasetData.syncIndexes();

@@ -3,7 +3,9 @@ import type {
   ChatModelItemType,
   FunctionModelItemType,
   VectorModelItemType,
-  AudioSpeechModelType
+  AudioSpeechModelType,
+  WhisperModelType,
+  ReRankModelItemType
 } from './model.d';
 
 export const defaultChatModels: ChatModelItemType[] = [
@@ -16,6 +18,7 @@ export const defaultChatModels: ChatModelItemType[] = [
     quoteMaxToken: 2000,
     maxTemperature: 1.2,
     censor: false,
+    vision: false,
     defaultSystemChatPrompt: ''
   },
   {
@@ -27,6 +30,7 @@ export const defaultChatModels: ChatModelItemType[] = [
     quoteMaxToken: 8000,
     maxTemperature: 1.2,
     censor: false,
+    vision: false,
     defaultSystemChatPrompt: ''
   },
   {
@@ -38,6 +42,19 @@ export const defaultChatModels: ChatModelItemType[] = [
     quoteMaxToken: 4000,
     maxTemperature: 1.2,
     censor: false,
+    vision: false,
+    defaultSystemChatPrompt: ''
+  },
+  {
+    model: 'gpt-4-vision-preview',
+    name: 'GPT4-Vision',
+    maxContext: 128000,
+    maxResponse: 4000,
+    price: 0,
+    quoteMaxToken: 100000,
+    maxTemperature: 1.2,
+    censor: false,
+    vision: true,
     defaultSystemChatPrompt: ''
   }
 ];
@@ -101,15 +118,26 @@ export const defaultVectorModels: VectorModelItemType[] = [
   }
 ];
 
+export const defaultReRankModels: ReRankModelItemType[] = [];
+
 export const defaultAudioSpeechModels: AudioSpeechModelType[] = [
   {
     model: 'tts-1',
     name: 'OpenAI TTS1',
-    price: 0
-  },
-  {
-    model: 'tts-1-hd',
-    name: 'OpenAI TTS1',
-    price: 0
+    price: 0,
+    voices: [
+      { label: 'Alloy', value: 'Alloy', bufferId: 'openai-Alloy' },
+      { label: 'Echo', value: 'Echo', bufferId: 'openai-Echo' },
+      { label: 'Fable', value: 'Fable', bufferId: 'openai-Fable' },
+      { label: 'Onyx', value: 'Onyx', bufferId: 'openai-Onyx' },
+      { label: 'Nova', value: 'Nova', bufferId: 'openai-Nova' },
+      { label: 'Shimmer', value: 'Shimmer', bufferId: 'openai-Shimmer' }
+    ]
   }
 ];
+
+export const defaultWhisperModel: WhisperModelType = {
+  model: 'whisper-1',
+  name: 'Whisper1',
+  price: 0
+};

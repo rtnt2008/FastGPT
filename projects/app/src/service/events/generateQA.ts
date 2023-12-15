@@ -4,7 +4,7 @@ import { DatasetDataIndexTypeEnum, TrainingModeEnum } from '@fastgpt/global/core
 import { sendOneInform } from '../support/user/inform/api';
 import { getAIApi } from '@fastgpt/service/core/ai/config';
 import type { ChatMessageItemType } from '@fastgpt/global/core/ai/type.d';
-import { addLog } from '@fastgpt/service/common/mongo/controller';
+import { addLog } from '@fastgpt/service/common/system/log';
 import { splitText2Chunks } from '@fastgpt/global/common/string/textSplitter';
 import { replaceVariable } from '@fastgpt/global/common/string/tools';
 import { Prompt_AgentQA } from '@/global/core/prompt/agent';
@@ -12,9 +12,18 @@ import { pushDataToDatasetCollection } from '@/pages/api/core/dataset/data/pushD
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { authTeamBalance } from '../support/permission/auth/bill';
 import type { PushDatasetDataChunkProps } from '@fastgpt/global/core/dataset/api.d';
+import { UserErrEnum } from '@fastgpt/global/common/error/code/user';
+import { lockTrainingDataByTeamId } from '@fastgpt/service/core/dataset/training/controller';
 
-const reduceQueue = () => {
+const reduceQueue = (retry = false) => {
   global.qaQueueLen = global.qaQueueLen > 0 ? global.qaQueueLen - 1 : 0;
+  if (global.qaQueueLen === 0 && retry) {
+    setTimeout(() => {
+      generateQA();
+    }, 60000);
+  }
+
+  return global.vectorQueueLen === 0;
 };
 
 export async function generateQA(): Promise<any> {
@@ -29,16 +38,16 @@ export async function generateQA(): Promise<any> {
     error = false
   } = await (async () => {
     try {
-      const data = (
-        await MongoDatasetTraining.findOneAndUpdate(
-          {
-            mode: TrainingModeEnum.qa,
-            lockTime: { $lte: new Date(Date.now() - 10 * 60 * 1000) }
-          },
-          {
-            lockTime: new Date()
-          }
-        ).select({
+      const data = await MongoDatasetTraining.findOneAndUpdate(
+        {
+          mode: TrainingModeEnum.qa,
+          lockTime: { $lte: new Date(Date.now() - 6 * 60 * 1000) }
+        },
+        {
+          lockTime: new Date()
+        }
+      )
+        .select({
           _id: 1,
           userId: 1,
           teamId: 1,
@@ -47,10 +56,11 @@ export async function generateQA(): Promise<any> {
           collectionId: 1,
           q: 1,
           model: 1,
+          chunkIndex: 1,
           billId: 1,
           prompt: 1
         })
-      )?.toJSON();
+        .lean();
 
       // task preemption
       if (!data) {
@@ -70,12 +80,13 @@ export async function generateQA(): Promise<any> {
     }
   })();
 
-  if (done) {
-    reduceQueue();
-    global.vectorQueueLen <= 0 && console.log(`【QA】Task Done`);
+  if (done || !data) {
+    if (reduceQueue()) {
+      console.log(`【QA】Task Done`);
+    }
     return;
   }
-  if (error || !data) {
+  if (error) {
     reduceQueue();
     return generateQA();
   }
@@ -83,49 +94,44 @@ export async function generateQA(): Promise<any> {
   // auth balance
   try {
     await authTeamBalance(data.teamId);
-  } catch (error) {
-    // send inform and lock data
-    try {
-      sendOneInform({
-        type: 'system',
-        title: '文本训练任务中止',
-        content:
-          '该团队账号余额不足，文本训练任务中止，重新充值后将会继续。暂停的任务将在 7 天后被删除。',
-        tmbId: data.tmbId
-      });
-      console.log('余额不足，暂停【QA】生成任务');
-      await MongoDatasetTraining.updateMany(
-        {
-          teamId: data.teamId
-        },
-        {
-          lockTime: new Date('2999/5/5')
-        }
-      );
-    } catch (error) {}
+  } catch (error: any) {
+    if (error?.statusText === UserErrEnum.balanceNotEnough) {
+      // send inform and lock data
+      try {
+        sendOneInform({
+          type: 'system',
+          title: '文本训练任务中止',
+          content:
+            '该团队账号余额不足，文本训练任务中止，重新充值后将会继续。暂停的任务将在 7 天后被删除。',
+          tmbId: data.tmbId
+        });
+        console.log('余额不足，暂停【QA】生成任务');
+        lockTrainingDataByTeamId(data.teamId);
+      } catch (error) {}
+    }
+
     reduceQueue();
     return generateQA();
   }
 
   try {
     const startTime = Date.now();
+    const model = data.model ?? global.qaModels[0].model;
+    const prompt = `${data.prompt || Prompt_AgentQA.description}
+${replaceVariable(Prompt_AgentQA.fixedText, { text })}`;
 
     // request LLM to get QA
     const messages: ChatMessageItemType[] = [
       {
         role: 'user',
-        content: data.prompt
-          ? replaceVariable(data.prompt, { text })
-          : replaceVariable(Prompt_AgentQA.prompt, {
-              theme: Prompt_AgentQA.defaultTheme,
-              text
-            })
+        content: prompt
       }
     ];
-    const ai = getAIApi(undefined, 480000);
+
+    const ai = getAIApi(undefined, 600000);
     const chatResponse = await ai.chat.completions.create({
-      model: global.qaModels[0].model,
-      temperature: 0.01,
+      model,
+      temperature: 0.3,
       messages,
       stream: false
     });
@@ -139,7 +145,10 @@ export async function generateQA(): Promise<any> {
       teamId: data.teamId,
       tmbId: data.tmbId,
       collectionId: data.collectionId,
-      data: qaArr,
+      data: qaArr.map((item) => ({
+        ...item,
+        chunkIndex: data.chunkIndex
+      })),
       mode: TrainingModeEnum.chunk,
       billId: data.billId
     });
@@ -147,8 +156,11 @@ export async function generateQA(): Promise<any> {
     // delete data from training
     await MongoDatasetTraining.findByIdAndDelete(data._id);
 
-    console.log(`split result length: `, qaArr.length);
-    console.log('生成QA成功，time:', `${(Date.now() - startTime) / 1000}s`);
+    addLog.info(`QA Training Finish`, {
+      time: `${(Date.now() - startTime) / 1000}s`,
+      splitLength: qaArr.length,
+      usage: chatResponse.usage
+    });
 
     // add bill
     if (qaArr.length > 0) {
@@ -156,7 +168,8 @@ export async function generateQA(): Promise<any> {
         teamId: data.teamId,
         tmbId: data.tmbId,
         totalTokens,
-        billId: data.billId
+        billId: data.billId,
+        model
       });
     } else {
       addLog.info(`QA result 0:`, { answer });
@@ -165,7 +178,7 @@ export async function generateQA(): Promise<any> {
     reduceQueue();
     generateQA();
   } catch (err: any) {
-    reduceQueue();
+    reduceQueue(true);
     // log
     if (err?.response) {
       addLog.info('openai error: 生成QA错误', {
@@ -230,7 +243,7 @@ function formatSplitText(text: string, rawText: string) {
 
   // empty result. direct split chunk
   if (result.length === 0) {
-    const splitRes = splitText2Chunks({ text: rawText, maxLen: 500 });
+    const splitRes = splitText2Chunks({ text: rawText, chunkLen: 512 });
     splitRes.chunks.forEach((chunk) => {
       result.push({
         q: chunk,

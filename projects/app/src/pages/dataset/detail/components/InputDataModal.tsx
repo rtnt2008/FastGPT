@@ -28,6 +28,7 @@ import SideTabs from '@/components/SideTabs';
 import { useLoading } from '@/web/common/hooks/useLoading';
 import DeleteIcon from '@/components/Icon/delete';
 import { defaultCollectionDetail } from '@/constants/dataset';
+import { getDocPath } from '@/web/common/system/doc';
 
 export type RawSourceTextProps = BoxProps & {
   sourceName?: string;
@@ -91,7 +92,7 @@ const InputDataModal = ({
     ...(defaultValue.id
       ? [{ label: t('dataset.data.edit.Delete'), id: TabEnum.delete, icon: 'delete' }]
       : []),
-    { label: t('dataset.data.edit.Course'), id: TabEnum.doc, icon: 'courseLight' }
+    { label: t('dataset.data.edit.Course'), id: TabEnum.doc, icon: 'common/courseLight' }
   ];
 
   const { ConfirmModal, openConfirm } = useConfirm({
@@ -117,14 +118,12 @@ const InputDataModal = ({
   const { mutate: sureImportData, isLoading: isImporting } = useRequest({
     mutationFn: async (e: InputDataType) => {
       if (!e.q) {
-        return toast({
-          title: '匹配的知识点不能为空',
-          status: 'warning'
-        });
+        setCurrentTab(TabEnum.content);
+        return Promise.reject(t('dataset.data.input is empty'));
       }
       if (countPromptTokens(e.q) >= maxToken) {
         return toast({
-          title: '总长度超长了',
+          title: t('core.dataset.data.Too Long'),
           status: 'warning'
         });
       }
@@ -196,17 +195,17 @@ const InputDataModal = ({
   const loading = useMemo(() => isImporting || isUpdating, [isImporting, isUpdating]);
 
   return (
-    <MyModal isOpen={true} isCentered w={'90vw'} maxW={'90vw'} h={'90vh'}>
+    <MyModal isOpen={true} isCentered w={'90vw'} maxW={'1440px'} h={'90vh'}>
       <Flex h={'100%'}>
         <Box p={5} borderRight={theme.borders.base}>
           <RawSourceText
             w={'200px'}
-            className=""
+            className="textEllipsis3"
             whiteSpace={'pre-wrap'}
             sourceName={collection.sourceName}
             sourceId={collection.sourceId}
             mb={6}
-            fontSize={['14px', '16px']}
+            fontSize={'sm'}
           />
           <SideTabs
             list={tabList}
@@ -216,20 +215,20 @@ const InputDataModal = ({
                 return openConfirm(onDeleteData)();
               }
               if (e === TabEnum.doc) {
-                return window.open(`${feConfigs.docUrl}/docs/use-cases/datasetengine`, '_blank');
+                return window.open(getDocPath('/docs/use-cases/datasetengine'), '_blank');
               }
               setCurrentTab(e);
             }}
           />
         </Box>
-        <Flex flexDirection={'column'} px={5} py={3} flex={1} h={'100%'}>
-          <Box fontSize={'lg'} fontWeight={'bold'} mb={4}>
+        <Flex flexDirection={'column'} py={3} flex={1} h={'100%'}>
+          <Box fontSize={'lg'} px={5} fontWeight={'bold'} mb={4}>
             {currentTab === TabEnum.content && (
               <>{defaultValue.id ? t('dataset.data.Update Data') : t('dataset.data.Input Data')}</>
             )}
             {currentTab === TabEnum.index && <> {t('dataset.data.Index Edit')}</>}
           </Box>
-          <Box flex={1} overflow={'auto'}>
+          <Box flex={1} px={5} overflow={'auto'}>
             {currentTab === TabEnum.content && (
               <>
                 <Box>
@@ -238,19 +237,17 @@ const InputDataModal = ({
                       <Box as="span" color={'red.600'}>
                         *
                       </Box>
-                      {'相关数据内容'}
+                      {t('core.dataset.data.Data Content')}
                     </Box>
-                    <MyTooltip
-                      label={'该输入框是必填项\n该内容通常是对于知识点的描述，也可以是用户的问题。'}
-                    >
+                    <MyTooltip label={t('core.dataset.data.Data Content Tip')}>
                       <QuestionOutlineIcon ml={1} />
                     </MyTooltip>
                   </Flex>
                   <Textarea
                     mt={1}
-                    placeholder={`该输入框是必填项，该内容通常是对于知识点的描述，也可以是用户的问题，最多 ${maxToken} 字。`}
+                    placeholder={t('core.dataset.data.Data Content Placeholder', { maxToken })}
                     maxLength={maxToken}
-                    rows={10}
+                    rows={12}
                     bg={'myWhite.400'}
                     {...register(`q`, {
                       required: true
@@ -259,22 +256,18 @@ const InputDataModal = ({
                 </Box>
                 <Box mt={5}>
                   <Flex>
-                    <Box>{'辅助数据'}</Box>
-                    <MyTooltip
-                      label={
-                        '该部分为可选填项\n该内容通常是为了与前面的数据内容配合，构建结构化提示词，用于特殊场景'
-                      }
-                    >
+                    <Box>{t('core.dataset.data.Auxiliary Data')}</Box>
+                    <MyTooltip label={t('core.dataset.data.Auxiliary Data Tip')}>
                       <QuestionOutlineIcon ml={1} />
                     </MyTooltip>
                   </Flex>
                   <Textarea
                     mt={1}
-                    placeholder={`该部分为可选填项, 通常是为了与前面的【数据内容】配合，构建结构化提示词，用于特殊场景，最多 ${
-                      maxToken * 1.5
-                    } 字。`}
+                    placeholder={t('core.dataset.data.Auxiliary Data Placeholder', {
+                      maxToken: maxToken * 1.5
+                    })}
                     bg={'myWhite.400'}
-                    rows={10}
+                    rows={12}
                     maxLength={maxToken * 1.5}
                     {...register('a')}
                   />
@@ -312,10 +305,7 @@ const InputDataModal = ({
                       />
                     </Flex>
                     {index.defaultIndex ? (
-                      <Box>
-                        无法编辑，默认索引会使用【相关数据内容】与【辅助数据】的文本直接生成索引，如不需要默认索引，可删除。
-                        每条数据必须保证有一个以上索引，所有索引被删除后，会自动生成默认索引。
-                      </Box>
+                      <Box>{t('core.dataset.data.Default Index Tip')}</Box>
                     ) : (
                       <Textarea
                         maxLength={maxToken}
@@ -354,13 +344,13 @@ const InputDataModal = ({
                     })
                   }
                 >
-                  <MyIcon name={'addCircle'} w={'16px'} />
+                  <MyIcon name={'common/addCircleLight'} w={'16px'} />
                   <Box>{t('dataset.data.Add Index')}</Box>
                 </Flex>
               </Grid>
             )}
           </Box>
-          <Flex justifyContent={'flex-end'} mt={4}>
+          <Flex justifyContent={'flex-end'} px={5} mt={4}>
             <Button variant={'base'} mr={3} isLoading={loading} onClick={onClose}>
               {t('common.Close')}
             </Button>
@@ -371,7 +361,7 @@ const InputDataModal = ({
                 // @ts-ignore
                 onClick={handleSubmit(defaultValue.id ? onUpdateData : sureImportData)}
               >
-                {defaultValue.id ? '确认变更' : '确认导入'}
+                {defaultValue.id ? t('common.Confirm Update') : t('common.Confirm Import')}
               </Button>
             </MyTooltip>
           </Flex>
@@ -418,7 +408,7 @@ export function RawSourceText({
                   await getFileAndOpen(sourceId as string);
                 } catch (error) {
                   toast({
-                    title: getErrText(error, '获取文件地址失败'),
+                    title: t(getErrText(error, 'error.fileNotFound')),
                     status: 'error'
                   });
                 }
@@ -429,7 +419,11 @@ export function RawSourceText({
         {...props}
       >
         <Image src={icon} alt="" w={['14px', '16px']} mr={2} />
-        <Box maxW={['200px', '300px']} className={props.className ?? 'textEllipsis'}>
+        <Box
+          maxW={['200px', '300px']}
+          className={props.className ?? 'textEllipsis'}
+          wordBreak={'break-all'}
+        >
           {sourceName || t('common.UnKnow Source')}
         </Box>
       </Box>

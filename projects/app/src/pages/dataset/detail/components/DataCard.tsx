@@ -1,5 +1,20 @@
 import React, { useCallback, useState, useRef, useMemo } from 'react';
-import { Box, Card, IconButton, Flex, Grid, Button } from '@chakra-ui/react';
+import {
+  Box,
+  Card,
+  IconButton,
+  Flex,
+  Grid,
+  Button,
+  useTheme,
+  Drawer,
+  DrawerBody,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerOverlay,
+  DrawerContent,
+  useDisclosure
+} from '@chakra-ui/react';
 import { usePagination } from '@/web/common/hooks/usePagination';
 import {
   getDatasetDataList,
@@ -23,13 +38,27 @@ import { TabEnum } from '..';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
 import { getDefaultIndex } from '@fastgpt/global/core/dataset/utils';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import {
+  DatasetCollectionTypeMap,
+  DatasetCollectionTrainingTypeMap
+} from '@fastgpt/global/core/dataset/constant';
+import { formatTime2YMDHM } from '@fastgpt/global/common/string/time';
+import { formatFileSize } from '@fastgpt/global/common/file/tools';
+import { getFileAndOpen } from '@/web/core/dataset/utils';
+import MyTooltip from '@/components/MyTooltip';
 
 const DataCard = () => {
   const BoxRef = useRef<HTMLDivElement>(null);
+  const theme = useTheme();
   const lastSearch = useRef('');
   const router = useRouter();
   const { userInfo } = useUserStore();
-  const { collectionId = '' } = router.query as { collectionId: string };
+  const { isPc } = useSystemStore();
+  const { collectionId = '', datasetId } = router.query as {
+    collectionId: string;
+    datasetId: string;
+  };
   const { Loading, setIsLoading } = useLoading({ defaultLoading: true });
   const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
@@ -37,6 +66,7 @@ const DataCard = () => {
   const { openConfirm, ConfirmModal } = useConfirm({
     content: t('dataset.Confirm to delete the data')
   });
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const {
     data: datasetDataList,
@@ -72,13 +102,60 @@ const DataCard = () => {
   );
 
   // get file info
-  const { data: collection } = useQuery(['getDatasetCollectionById', collectionId], () =>
-    getDatasetCollectionById(collectionId)
+  const { data: collection } = useQuery(
+    ['getDatasetCollectionById', collectionId],
+    () => getDatasetCollectionById(collectionId),
+    {
+      onError: () => {
+        router.replace({
+          query: {
+            datasetId
+          }
+        });
+      }
+    }
   );
 
   const canWrite = useMemo(
     () => userInfo?.team?.role !== TeamMemberRoleEnum.visitor && !!collection?.canWrite,
     [collection?.canWrite, userInfo?.team?.role]
+  );
+
+  const metadataList = useMemo(
+    () =>
+      collection
+        ? [
+            {
+              label: t('core.dataset.collection.metadata.source'),
+              value: t(DatasetCollectionTypeMap[collection.type]?.name)
+            },
+            {
+              label: t('core.dataset.collection.metadata.source name'),
+              value: collection.file?.filename || collection?.rawLink || collection?.name
+            },
+            {
+              label: t('core.dataset.collection.metadata.source size'),
+              value: collection.file ? formatFileSize(collection.file.length) : '-'
+            },
+            {
+              label: t('core.dataset.collection.metadata.Createtime'),
+              value: formatTime2YMDHM(collection.createTime)
+            },
+            {
+              label: t('core.dataset.collection.metadata.Updatetime'),
+              value: formatTime2YMDHM(collection.updateTime)
+            },
+            {
+              label: t('core.dataset.collection.metadata.Training Type'),
+              value: t(DatasetCollectionTrainingTypeMap[collection.trainingType]?.label)
+            },
+            {
+              label: t('core.dataset.collection.metadata.Chunk Size'),
+              value: collection.chunkSize || '-'
+            }
+          ]
+        : [],
+    [collection, t]
   );
 
   return (
@@ -106,13 +183,13 @@ const DataCard = () => {
           <Box lineHeight={1.2}>
             <RawSourceText
               sourceName={collection?.name}
-              sourceId={collection?.metadata?.fileId || collection?.metadata?.rawLink}
+              sourceId={collection?.fileId || collection?.rawLink}
               fontSize={['md', 'lg']}
               color={'black'}
               textDecoration={'none'}
             />
             <Box fontSize={'sm'} color={'myGray.500'}>
-              文件ID:{' '}
+              {t('core.dataset.collection.id')}:{' '}
               <Box as={'span'} userSelect={'all'}>
                 {collection?._id}
               </Box>
@@ -122,7 +199,7 @@ const DataCard = () => {
         {canWrite && (
           <Box>
             <Button
-              ml={2}
+              mx={2}
               variant={'base'}
               size={['sm', 'md']}
               onClick={() => {
@@ -137,20 +214,36 @@ const DataCard = () => {
             </Button>
           </Box>
         )}
+        {isPc && (
+          <MyTooltip label={t('core.dataset.collection.metadata.Read Metadata')}>
+            <IconButton
+              variant={'base'}
+              size={['sm', 'md']}
+              icon={<MyIcon name={'menu'} w={'18px'} />}
+              aria-label={''}
+              onClick={onOpen}
+            />
+          </MyTooltip>
+        )}
       </Flex>
       <Flex my={3} alignItems={'center'}>
         <Box>
           <Box as={'span'} fontSize={['md', 'lg']}>
-            {total}组
+            {t('core.dataset.data.Total Amount', { total })}
           </Box>
         </Box>
         <Box flex={1} mr={1} />
         <MyInput
           leftIcon={
-            <MyIcon name="searchLight" position={'absolute'} w={'14px'} color={'myGray.500'} />
+            <MyIcon
+              name="common/searchLight"
+              position={'absolute'}
+              w={'14px'}
+              color={'myGray.500'}
+            />
           }
           w={['200px', '300px']}
-          placeholder="根据匹配知识，预期答案和来源进行搜索"
+          placeholder={t('core.dataset.data.Search data placeholder')}
           value={searchText}
           onChange={(e) => {
             setSearchText(e.target.value);
@@ -170,19 +263,26 @@ const DataCard = () => {
       </Flex>
       <Grid
         minH={'100px'}
-        gridTemplateColumns={['1fr', 'repeat(2,1fr)', 'repeat(3,1fr)']}
+        gridTemplateColumns={['1fr', 'repeat(2,1fr)', 'repeat(3,1fr)', 'repeat(4,1fr)']}
         gridGap={4}
       >
-        {datasetDataList.map((item) => (
+        {datasetDataList.map((item, index) => (
           <Card
             key={item._id}
             cursor={'pointer'}
-            pt={3}
+            p={3}
             userSelect={'none'}
             boxShadow={'none'}
-            _hover={{ boxShadow: 'lg', '& .delete': { display: 'flex' } }}
-            border={'1px solid '}
-            borderColor={'myGray.200'}
+            bg={'myWhite.500'}
+            border={theme.borders.sm}
+            position={'relative'}
+            overflow={'hidden'}
+            _hover={{
+              borderColor: 'myGray.200',
+              boxShadow: 'lg',
+              bg: 'white',
+              '& .footer': { h: 'auto', p: 3 }
+            }}
             onClick={() => {
               if (!collection) return;
               setEditInputData({
@@ -193,56 +293,113 @@ const DataCard = () => {
               });
             }}
           >
-            <Box
-              h={'95px'}
-              overflow={'hidden'}
-              wordBreak={'break-all'}
-              px={3}
-              py={1}
-              fontSize={'13px'}
-            >
-              <Box color={'myGray.1000'} mb={2}>
-                {item.q}
+            <Flex zIndex={1} alignItems={'center'} justifyContent={'space-between'}>
+              <Box border={theme.borders.base} px={2} fontSize={'sm'} mr={1} borderRadius={'md'}>
+                # {index + 1}
               </Box>
-              <Box color={'myGray.600'}>{item.a}</Box>
-            </Box>
-            <Flex py={2} px={4} h={'36px'} alignItems={'flex-end'} fontSize={'sm'}>
-              <Box className={'textEllipsis'} flex={1} color={'myGray.500'}>
+              <Box className={'textEllipsis'} color={'myGray.500'} fontSize={'xs'}>
                 ID:{item._id}
               </Box>
-              {canWrite && (
-                <IconButton
-                  className="delete"
-                  display={['flex', 'none']}
-                  icon={<DeleteIcon />}
-                  variant={'base'}
-                  colorScheme={'gray'}
-                  aria-label={'delete'}
-                  size={'xs'}
-                  borderRadius={'md'}
-                  _hover={{ color: 'red.600' }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openConfirm(async () => {
-                      try {
-                        setIsLoading(true);
-                        await delOneDatasetDataById(item._id);
-                        getData(pageNum);
-                      } catch (error) {
-                        toast({
-                          title: getErrText(error),
-                          status: 'error'
-                        });
-                      }
-                      setIsLoading(false);
-                    })();
-                  }}
-                />
-              )}
             </Flex>
+            <Box
+              maxH={'135px'}
+              minH={'90px'}
+              overflow={'hidden'}
+              wordBreak={'break-all'}
+              pt={1}
+              pb={3}
+              fontSize={'13px'}
+            >
+              <Box color={'black'} mb={1}>
+                {item.q}
+              </Box>
+              <Box color={'myGray.700'}>{item.a}</Box>
+
+              <Flex
+                className="footer"
+                position={'absolute'}
+                top={0}
+                bottom={0}
+                left={0}
+                right={0}
+                h={'0'}
+                overflow={'hidden'}
+                p={0}
+                bg={'linear-gradient(to top, white,white 20%, rgba(255,255,255,0) 60%)'}
+                alignItems={'flex-end'}
+                fontSize={'sm'}
+              >
+                <Flex alignItems={'center'}>
+                  <MyIcon name="common/text/t" w={'14px'} mr={1} color={'myGray.500'} />
+                  {item.q.length + (item.a?.length || 0)}
+                </Flex>
+                <Box flex={1} />
+                {canWrite && (
+                  <IconButton
+                    display={'flex'}
+                    icon={<DeleteIcon />}
+                    variant={'base'}
+                    colorScheme={'gray'}
+                    aria-label={'delete'}
+                    size={'xs'}
+                    borderRadius={'md'}
+                    _hover={{ color: 'red.600' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openConfirm(async () => {
+                        try {
+                          setIsLoading(true);
+                          await delOneDatasetDataById(item._id);
+                          getData(pageNum);
+                        } catch (error) {
+                          toast({
+                            title: getErrText(error),
+                            status: 'error'
+                          });
+                        }
+                        setIsLoading(false);
+                      })();
+                    }}
+                  />
+                )}
+              </Flex>
+            </Box>
           </Card>
         ))}
       </Grid>
+
+      {/* metadata drawer */}
+      <Drawer isOpen={isOpen} placement="right" size={'md'} onClose={onClose}>
+        <DrawerOverlay />
+        <DrawerContent>
+          <DrawerHeader>{t('core.dataset.collection.metadata.metadata')}</DrawerHeader>
+
+          <DrawerBody>
+            {metadataList.map((item) => (
+              <Flex key={item.label} alignItems={'center'} mb={5}>
+                <Box color={'myGray.500'} w={'100px'}>
+                  {item.label}
+                </Box>
+                <Box>{item.value}</Box>
+              </Flex>
+            ))}
+            {collection?.sourceId && (
+              <Button
+                variant={'base'}
+                onClick={() => collection.sourceId && getFileAndOpen(collection.sourceId)}
+              >
+                {t('core.dataset.collection.metadata.read source')}
+              </Button>
+            )}
+          </DrawerBody>
+
+          <DrawerFooter>
+            <Button variant={'base'} onClick={onClose}>
+              {t('common.Close')}
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
       {total > pageSize && (
         <Flex mt={2} justifyContent={'center'}>
@@ -253,7 +410,7 @@ const DataCard = () => {
         <Flex flexDirection={'column'} alignItems={'center'} pt={'10vh'}>
           <MyIcon name="empty" w={'48px'} h={'48px'} color={'transparent'} />
           <Box mt={2} color={'myGray.500'}>
-            内容空空的，快创建一个吧！
+            {t('core.dataset.data.Empty Tip')}
           </Box>
         </Flex>
       )}

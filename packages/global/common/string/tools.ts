@@ -13,7 +13,8 @@ export const hashStr = (str: string) => {
 };
 
 /* simple text, remove chinese space and extra \n */
-export const simpleText = (text: string) => {
+export const simpleText = (text = '') => {
+  text = text.trim();
   text = text.replace(/([\u4e00-\u9fa5])[\s&&[^\n]]+([\u4e00-\u9fa5])/g, '$1$2');
   text = text.replace(/\r\n|\r/g, '\n');
   text = text.replace(/\n{3,}/g, '\n\n');
@@ -24,7 +25,7 @@ export const simpleText = (text: string) => {
 };
 
 /* 
-    replace {{variable}} to value
+  replace {{variable}} to value
 */
 export function replaceVariable(text: string, obj: Record<string, string | number>) {
   for (const key in obj) {

@@ -1,8 +1,8 @@
 import type { FeConfigsType, SystemEnvType } from '@fastgpt/global/common/system/types/index.d';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-import { readFileSync } from 'fs';
-import type { InitDateResponse } from '@/global/common/api/systemRes';
+import { readFileSync, readdirSync } from 'fs';
+import type { ConfigFileType, InitDateResponse } from '@/global/common/api/systemRes';
 import { formatPrice } from '@fastgpt/global/support/wallet/bill/tools';
 import { getTikTokenEnc } from '@fastgpt/global/common/string/tiktoken';
 import { initHttpAgent } from '@fastgpt/service/common/middle/httpAgent';
@@ -13,19 +13,18 @@ import {
   defaultExtractModels,
   defaultQGModels,
   defaultVectorModels,
-  defaultAudioSpeechModels
+  defaultAudioSpeechModels,
+  defaultWhisperModel,
+  defaultReRankModels
 } from '@fastgpt/global/core/ai/model';
-import {
-  AudioSpeechModelType,
-  ChatModelItemType,
-  FunctionModelItemType,
-  LLMModelItemType,
-  VectorModelItemType
-} from '@fastgpt/global/core/ai/model.d';
+import { SimpleModeTemplate_FastGPT_Universal } from '@/global/core/app/constants';
+import { getSimpleTemplatesFromPlus } from '@/service/core/app/utils';
+import { PluginTypeEnum } from '@fastgpt/global/core/plugin/constants';
+import { getFastGPTFeConfig } from '@fastgpt/service/common/system/config/controller';
+import { connectToDatabase } from '@/service/mongo';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  getInitConfig();
-  getModelPrice();
+  await getInitConfig();
 
   jsonRes<InitDateResponse>(res, {
     data: {
@@ -34,10 +33,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       qaModels: global.qaModels,
       cqModels: global.cqModels,
       extractModels: global.extractModels,
-      qgModels: global.qgModels,
       vectorModels: global.vectorModels,
+      reRankModels: global.reRankModels.map((item) => ({
+        ...item,
+        requestUrl: undefined,
+        requestAuth: undefined
+      })),
+      audioSpeechModels: global.audioSpeechModels,
       priceMd: global.priceMd,
-      systemVersion: global.systemVersion || '0.0.0'
+      systemVersion: global.systemVersion || '0.0.0',
+      simpleModeTemplates: global.simpleModeTemplates
     }
   });
 }
@@ -49,13 +54,11 @@ const defaultSystemEnv: SystemEnvType = {
 };
 const defaultFeConfigs: FeConfigsType = {
   show_emptyChat: true,
-  show_contact: true,
   show_git: true,
-  show_doc: true,
-  docUrl: 'https://docs.fastgpt.run',
-  openAPIDocUrl: 'https://doc.fastgpt.run/docs/development/openapi',
+  show_register: false,
+  docUrl: 'https://doc.fastgpt.in',
+  openAPIDocUrl: 'https://doc.fastgpt.in/docs/development/openapi',
   systemTitle: 'FastGPT',
-  authorText: 'Made by FastGPT Team.',
   limit: {
     exportLimitMinutes: 0
   },
@@ -63,88 +66,107 @@ const defaultFeConfigs: FeConfigsType = {
   favicon: '/favicon.ico'
 };
 
-export function initGlobal() {
-  // init tikToken
-  getTikTokenEnc();
-  initHttpAgent();
-  global.qaQueueLen = 0;
-  global.vectorQueueLen = 0;
-}
-
-export function getInitConfig() {
+export async function getInitConfig() {
   try {
     if (global.feConfigs) return;
-
-    getSystemVersion();
+    await connectToDatabase();
+    initGlobal();
 
     const filename =
       process.env.NODE_ENV === 'development' ? 'data/config.local.json' : '/app/data/config.json';
-    const res = JSON.parse(readFileSync(filename, 'utf-8')) as {
-      FeConfig: FeConfigsType;
-      SystemParams: SystemEnvType;
-      ChatModels: ChatModelItemType[];
-      QAModels: LLMModelItemType[];
-      CQModels: FunctionModelItemType[];
-      ExtractModels: FunctionModelItemType[];
-      QGModels: LLMModelItemType[];
-      VectorModels: VectorModelItemType[];
-      AudioSpeechModels: AudioSpeechModelType[];
+    const res = JSON.parse(readFileSync(filename, 'utf-8')) as ConfigFileType;
+
+    // get config from database
+    const dbFeConfig = await getFastGPTFeConfig();
+    const concatConfig: ConfigFileType = {
+      ...res,
+      FeConfig: {
+        ...res.FeConfig,
+        ...dbFeConfig
+      }
     };
 
-    console.log(`System Version: ${global.systemVersion}`);
-
-    console.log(res);
-
-    global.systemEnv = res.SystemParams
-      ? { ...defaultSystemEnv, ...res.SystemParams }
-      : defaultSystemEnv;
-    global.feConfigs = res.FeConfig
-      ? { ...defaultFeConfigs, ...res.FeConfig, isPlus: !!res.SystemParams?.pluginBaseUrl }
-      : defaultFeConfigs;
-
-    global.chatModels = res.ChatModels || defaultChatModels;
-    global.qaModels = res.QAModels || defaultQAModels;
-    global.cqModels = res.CQModels || defaultCQModels;
-    global.extractModels = res.ExtractModels || defaultExtractModels;
-    global.qgModels = res.QGModels || defaultQGModels;
-
-    global.vectorModels = res.VectorModels || defaultVectorModels;
-
-    global.audioSpeechModels = res.AudioSpeechModels || defaultAudioSpeechModels;
+    setDefaultData(concatConfig);
   } catch (error) {
     setDefaultData();
     console.log('get init config error, set default', error);
   }
+  await getSimpleModeTemplates();
+
+  getSystemVersion();
+  getModelPrice();
+  getSystemPlugin();
+
+  console.log({
+    FeConfig: global.feConfigs,
+    SystemParams: global.systemEnv,
+    ChatModels: global.chatModels,
+    QAModels: global.qaModels,
+    CQModels: global.cqModels,
+    ExtractModels: global.extractModels,
+    QGModels: global.qgModels,
+    VectorModels: global.vectorModels,
+    ReRankModels: global.reRankModels,
+    AudioSpeechModels: global.reRankModels,
+    WhisperModel: global.whisperModel,
+    price: global.priceMd,
+    simpleModeTemplates: global.simpleModeTemplates,
+    communityPlugins: global.communityPlugins
+  });
 }
 
-export function setDefaultData() {
-  global.systemEnv = defaultSystemEnv;
-  global.feConfigs = defaultFeConfigs;
+export function initGlobal() {
+  // init tikToken
+  getTikTokenEnc();
+  initHttpAgent();
+  global.communityPlugins = [];
+  global.simpleModeTemplates = [];
+  global.qaQueueLen = global.qaQueueLen ?? 0;
+  global.vectorQueueLen = global.vectorQueueLen ?? 0;
+}
 
-  global.chatModels = defaultChatModels;
-  global.qaModels = defaultQAModels;
-  global.cqModels = defaultCQModels;
-  global.extractModels = defaultExtractModels;
-  global.qgModels = defaultQGModels;
+export function setDefaultData(res?: ConfigFileType) {
+  global.systemEnv = res?.SystemParams
+    ? { ...defaultSystemEnv, ...res.SystemParams }
+    : defaultSystemEnv;
+  global.feConfigs = res?.FeConfig
+    ? {
+        concatMd: res?.FeConfig?.show_git
+          ? '* 项目开源地址: [FastGPT GitHub](https://github.com/labring/FastGPT)\n* 交流群: ![](https://doc.fastgpt.in/wechat-fastgpt.webp)'
+          : '',
+        ...defaultFeConfigs,
+        ...res.FeConfig,
+        isPlus: !!res.SystemParams?.pluginBaseUrl
+      }
+    : defaultFeConfigs;
 
-  global.vectorModels = defaultVectorModels;
-  global.audioSpeechModels = defaultAudioSpeechModels;
+  global.chatModels = res?.ChatModels || defaultChatModels;
+  global.qaModels = res?.QAModels || defaultQAModels;
+  global.cqModels = res?.CQModels || defaultCQModels;
+  global.extractModels = res?.ExtractModels || defaultExtractModels;
+  global.qgModels = res?.QGModels || defaultQGModels;
+
+  global.vectorModels = res?.VectorModels || defaultVectorModels;
+
+  global.reRankModels = res?.ReRankModels || defaultReRankModels;
+
+  global.audioSpeechModels = res?.AudioSpeechModels || defaultAudioSpeechModels;
+
+  global.whisperModel = res?.WhisperModel || defaultWhisperModel;
 
   global.priceMd = '';
-
-  console.log('use default config');
-  console.log(global);
 }
 
 export function getSystemVersion() {
   try {
     if (process.env.NODE_ENV === 'development') {
       global.systemVersion = process.env.npm_package_version || '0.0.0';
-      return;
-    }
-    const packageJson = JSON.parse(readFileSync('/app/package.json', 'utf-8'));
+    } else {
+      const packageJson = JSON.parse(readFileSync('/app/package.json', 'utf-8'));
 
-    global.systemVersion = packageJson?.version;
+      global.systemVersion = packageJson?.version;
+    }
+    console.log(`System Version: ${global.systemVersion}`);
   } catch (error) {
     console.log(error);
 
@@ -174,6 +196,69 @@ ${global.extractModels
 ${global.qgModels
   ?.map((item) => `| 下一步指引-${item.name} | ${formatPrice(item.price, 1000)} |`)
   .join('\n')}
+${global.audioSpeechModels
+  ?.map((item) => `| 语音播放-${item.name} | ${formatPrice(item.price, 1000)} |`)
+  .join('\n')}
+${`| 语音输入-${global.whisperModel.name} | ${global.whisperModel.price}/分钟 |`}
 `;
-  console.log(global.priceMd);
+}
+
+async function getSimpleModeTemplates() {
+  if (global.simpleModeTemplates && global.simpleModeTemplates.length > 0) return;
+
+  try {
+    const basePath =
+      process.env.NODE_ENV === 'development'
+        ? 'public/simpleTemplates'
+        : '/app/projects/app/public/simpleTemplates';
+    // read data/simpleTemplates directory, get all json file
+    const files = readdirSync(basePath);
+    // filter json file
+    const filterFiles = files.filter((item) => item.endsWith('.json'));
+
+    // read json file
+    const fileTemplates = filterFiles.map((item) => {
+      const content = readFileSync(`${basePath}/${item}`, 'utf-8');
+      return {
+        id: item.replace('.json', ''),
+        ...JSON.parse(content)
+      };
+    });
+
+    // fetch templates from plus
+    const plusTemplates = await getSimpleTemplatesFromPlus();
+
+    global.simpleModeTemplates = [
+      SimpleModeTemplate_FastGPT_Universal,
+      ...plusTemplates,
+      ...fileTemplates
+    ];
+  } catch (error) {
+    global.simpleModeTemplates = [SimpleModeTemplate_FastGPT_Universal];
+  }
+}
+
+function getSystemPlugin() {
+  if (global.communityPlugins && global.communityPlugins.length > 0) return;
+
+  const basePath =
+    process.env.NODE_ENV === 'development'
+      ? 'public/pluginTemplates'
+      : '/app/projects/app/public/pluginTemplates';
+  // read data/pluginTemplates directory, get all json file
+  const files = readdirSync(basePath);
+  // filter json file
+  const filterFiles = files.filter((item) => item.endsWith('.json'));
+
+  // read json file
+  const fileTemplates = filterFiles.map((item) => {
+    const content = readFileSync(`${basePath}/${item}`, 'utf-8');
+    return {
+      id: `${PluginTypeEnum.community}-${item.replace('.json', '')}`,
+      type: PluginTypeEnum.community,
+      ...JSON.parse(content)
+    };
+  });
+
+  global.communityPlugins = fileTemplates;
 }
