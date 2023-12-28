@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import RemarkGfm from 'remark-gfm';
-import RemarkMath from 'remark-math';
-import RehypeKatex from 'rehype-katex';
-import RemarkBreaks from 'remark-breaks';
-
 import 'katex/dist/katex.min.css';
+import RemarkMath from 'remark-math';
+import RemarkBreaks from 'remark-breaks';
+import RehypeKatex from 'rehype-katex';
+import RemarkGfm from 'remark-gfm';
+
 import styles from './index.module.scss';
 import dynamic from 'next/dynamic';
 
@@ -74,7 +74,7 @@ function A({ children, ...props }: any) {
     return (
       <MyTooltip label={t('core.chat.markdown.Quick Question')}>
         <Button
-          variant={'base'}
+          variant={'whitePrimary'}
           size={'xs'}
           borderRadius={'md'}
           my={1}
@@ -96,10 +96,10 @@ function A({ children, ...props }: any) {
             name={'core/chat/quoteSign'}
             transform={'translateY(-2px)'}
             w={'18px'}
-            color={'myBlue.600'}
+            color={'primary.500'}
             cursor={'pointer'}
             _hover={{
-              color: 'myBlue.800'
+              color: 'primary.700'
             }}
             onClick={() => getFileAndOpen(props.href)}
           />
@@ -112,17 +112,6 @@ function A({ children, ...props }: any) {
 }
 
 const Markdown = ({ source, isChatting = false }: { source: string; isChatting?: boolean }) => {
-  const components = useMemo(
-    () => ({
-      img: Image,
-      pre: 'div',
-      p: 'div',
-      code: Code,
-      a: A
-    }),
-    []
-  );
-
   const formatSource = source
     .replace(/\\n/g, '\n&nbsp;')
     .replace(/(http[s]?:\/\/[^\s，。]+)([。，])/g, '$1 $2')
@@ -131,12 +120,17 @@ const Markdown = ({ source, isChatting = false }: { source: string; isChatting?:
   return (
     <ReactMarkdown
       className={`markdown ${styles.markdown}
-      ${isChatting ? (source === '' ? styles.waitingAnimation : styles.animation) : ''}
+      ${isChatting ? `${formatSource ? styles.waitingAnimation : styles.animation}` : ''}
     `}
-      remarkPlugins={[RemarkGfm, RemarkMath, RemarkBreaks]}
+      remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
       rehypePlugins={[RehypeKatex]}
-      // @ts-ignore
-      components={components}
+      components={{
+        img: Image,
+        pre: 'div',
+        p: (pProps) => <p {...pProps} dir="auto" />,
+        code: Code,
+        a: A
+      }}
       linkTarget={'_blank'}
     >
       {formatSource}

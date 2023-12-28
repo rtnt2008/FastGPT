@@ -43,6 +43,9 @@ export async function generateVector(): Promise<any> {
           lockTime: new Date()
         }
       )
+        .sort({
+          weight: -1
+        })
         .select({
           _id: 1,
           userId: 1,
@@ -137,6 +140,7 @@ export async function generateVector(): Promise<any> {
       indexes: dataItem.indexes,
       model: data.model
     });
+
     // push bill
     pushGenerateVectorBill({
       teamId: data.teamId,
@@ -170,9 +174,11 @@ export async function generateVector(): Promise<any> {
       err.response?.data?.error?.type === 'invalid_request_error' ||
       err?.code === 500
     ) {
-      addLog.info('invalid message format', {
-        dataItem
-      });
+      addLog.info('Lock training data');
+      console.log(err?.code);
+      console.log(err.response?.data?.error?.type);
+      console.log(err?.message);
+
       try {
         await MongoDatasetTraining.findByIdAndUpdate(data._id, {
           lockTime: new Date('2998/5/5')

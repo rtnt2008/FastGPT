@@ -43,13 +43,13 @@ const MyRadio = ({
           position={'relative'}
           {...(value === item.value
             ? {
-                borderColor: 'myBlue.500',
-                bg: 'myBlue.100'
+                borderColor: 'primary.400',
+                bg: 'primary.50'
               }
             : {
                 bg: 'myWhite.300',
                 _hover: {
-                  borderColor: 'myBlue.500'
+                  borderColor: 'primary.400'
                 }
               })}
           _after={{
@@ -66,7 +66,7 @@ const MyRadio = ({
             ...(value === item.value
               ? {
                   border: '5px solid',
-                  borderColor: 'myBlue.700'
+                  borderColor: 'primary.600'
                 }
               : {
                   border: '2px solid',
